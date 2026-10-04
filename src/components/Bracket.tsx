@@ -3,9 +3,10 @@ import { useEventData } from '../data/EventData';
 import { type BracketView, type MatchView, validWinners } from '../domain/bracket';
 import { teamName } from '../domain/teams';
 import type { Gender } from '../domain/types';
+import { Podium } from './Podium';
 import { TeamCrest } from './TeamCrest';
 
-const MATCH_LABEL = { semi1: 'Semifinal 1', semi2: 'Semifinal 2', final: 'Final' } as const;
+const MATCH_LABEL = { semi1: 'Semifinal 1', semi2: 'Semifinal 2', final: 'Final', third: 'Battle for 3rd' } as const;
 
 export function Bracket({ gender, view }: { gender: Gender; view: BracketView }) {
   const { data, run } = useEventData();
@@ -16,7 +17,11 @@ export function Bracket({ gender, view }: { gender: Gender; view: BracketView })
     const slot = match.sides[side];
     const pair = slot === null ? undefined : view.pairsBySlot.get(slot);
     if (!pair || slot === null) {
-      return <div className="side side--tbd">Winner of semifinal {side + 1}</div>;
+      return (
+        <div className="side side--tbd">
+          {match.key === 'third' ? 'Loser' : 'Winner'} of semifinal {side + 1}
+        </div>
+      );
     }
     const decided = match.winnerSlot !== null;
     const won = match.winnerSlot === slot;
@@ -68,7 +73,7 @@ export function Bracket({ gender, view }: { gender: Gender; view: BracketView })
     </div>
   );
 
-  const champion = view.championSlot === null ? undefined : view.pairsBySlot.get(view.championSlot);
+  const decided = view.final.winnerSlot !== null || view.third.winnerSlot !== null;
 
   return (
     <>
@@ -81,16 +86,31 @@ export function Bracket({ gender, view }: { gender: Gender; view: BracketView })
         <div className="court__final">
           {renderMatch(view.final)}
         </div>
+        <div className="court__third">
+          {renderMatch(view.third)}
+        </div>
       </div>
       {canEdit && <p className="bracket-note">Tap the pair that won each match. Tap again to clear a result.</p>}
-      {champion && (
-        <div className={`champion team-${champion.teamId}`} role="status">
-          <TeamCrest team={champion.teamId} size={56} className="champion__crest" />
-          <span className="champion__label">{gender === 'F' ? 'Women’s' : 'Men’s'} champions</span>
-          <span className="champion__names">
-            {nameOf(champion.player1Id)} &amp; {nameOf(champion.player2Id)}
-          </span>
-          <span className="champion__team">Team {teamName(champion.teamId)}</span>
+      {decided && (
+        <div role="status">
+          <Podium
+            label={`${gender === 'F' ? 'Women’s' : 'Men’s'} doubles final standings`}
+            places={view.placings.map((slot) => {
+              const pair = slot === null ? undefined : view.pairsBySlot.get(slot);
+              return pair
+                ? {
+                    teamId: pair.teamId,
+                    title: (
+                      <span className="podium__names">
+                        <span>{nameOf(pair.player1Id)}</span>
+                        <span>{nameOf(pair.player2Id)}</span>
+                      </span>
+                    ),
+                    detail: teamName(pair.teamId),
+                  }
+                : null;
+            })}
+          />
         </div>
       )}
     </>

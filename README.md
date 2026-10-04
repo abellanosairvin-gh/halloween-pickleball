@@ -3,8 +3,8 @@
 Organizer site for the party: check players in (which assigns their team), record wins and losses during team play, and run the women's and men's doubles brackets.
 
 - **Players** – women on the left and men on the right, A before B. Tap a name to check them in, which assigns a team and shows the reveal. Tap a checked-in player to move them, undo the check-in or edit their details. **Edit list** switches the page to editing, where you can add, rename, re-level or delete players. A player in a locked tournament pair can't change gender or team, undo their check-in or be deleted until that bracket is reset.
-- **Teams** – team standings by win rate (the prize goes to the leader), and each team's women and men by win rate, with a green/red bar per game. **+W** / **+L** ask for confirmation before recording. Tap a player's record to remove a result entered by mistake. **Simulate 5 games** adds random results to every checked-in player for a dry run; they're marked as simulated and **Clear simulated results** removes only those.
-- **Tournament** – each team's top 2 women and top 2 men by win rate form fixed doubles pairs. Only players with at least 4 recorded games qualify (`MIN_PAIR_GAMES` in `src/domain/standings.ts`, also enforced in `set_bracket_pairs`). Lock the pairs to draw the semifinals at random, then tap the winning pair of each match.
+- **Teams** – a 1st-to-4th podium of teams by win rate (the prize goes to 1st; teams on the same rate share a place), and each team's women and men by win rate, with a green/red bar per game. **+W** / **+L** ask for confirmation before recording. Tap a player's record to remove a result entered by mistake. **Simulate 5 games** adds random results to every checked-in player for a dry run; they're marked as simulated and **Clear simulated results** removes only those.
+- **Tournament** – each team's top 2 women and top 2 men by win rate form fixed doubles pairs. Only players with at least 4 recorded games qualify (`MIN_PAIR_GAMES` in `src/domain/standings.ts`, also enforced in `set_bracket_pairs`). Lock the pairs to draw the semifinals at random, then tap the winning pair of each match. The semifinal winners play the final and the losers play the battle for 3rd, and the podium below the bracket fills in 1st to 4th.
 
 ## How teams stay fair
 
@@ -22,7 +22,7 @@ Without Supabase settings the app runs in **demo mode**: data is kept in this br
 ## Connect Supabase
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. In the SQL editor, run each file in `supabase/migrations` in order (`0001_init.sql`, then `0002_simulated_results.sql`, then `0003_party_page.sql`), then `supabase/seed.sql`. If you already ran `0001`, just run the newer files.
+2. In the SQL editor, run each file in `supabase/migrations` in order (`0001_init.sql`, then `0002_simulated_results.sql`, then `0003_party_page.sql`, then `0004_battle_for_third.sql`), then `supabase/seed.sql`. If you already ran `0001`, just run the newer files.
 3. Under **Authentication → Users**, add the organizer (email and password). Turn off public sign-ups under **Authentication → Providers → Email** so nobody else can create an account.
 4. Copy `.env.example` to `.env` and fill in the project URL and anon key from **Project Settings → API**.
 5. `npm run dev`, then sign in as the organizer.

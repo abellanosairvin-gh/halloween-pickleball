@@ -30,8 +30,11 @@ export interface BracketPair {
   player2Id: string;
 }
 
-/** semi1 is slot 0 vs slot 1, semi2 is slot 2 vs slot 3, final is the two semi winners. */
-export type MatchKey = 'semi1' | 'semi2' | 'final';
+/**
+ * semi1 is slot 0 vs slot 1, semi2 is slot 2 vs slot 3, final is the two semi winners and
+ * third (the battle for 3rd) is the two semi losers.
+ */
+export type MatchKey = 'semi1' | 'semi2' | 'final' | 'third';
 
 export interface BracketMatch {
   gender: Gender;

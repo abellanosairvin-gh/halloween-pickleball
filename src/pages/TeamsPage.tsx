@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAccess } from '../auth/Access';
 import { ConfirmDialog, Dialog } from '../components/Dialog';
+import { Podium } from '../components/Podium';
 import { TeamCrest } from '../components/TeamCrest';
 import { useToast } from '../components/Toast';
 import { useEventData } from '../data/EventData';
@@ -77,22 +78,23 @@ export function TeamsPage() {
         )}
       </header>
 
-      <ol className="race" aria-label="Team standings by win rate">
-        {standings.map((s, i) => (
-          <li key={s.teamId} className={`race__row ${i === 0 && anyGames ? 'is-leader' : ''}`}>
-            <span className="race__rank">{i + 1}</span>
-            <a className={`race__team team-${s.teamId}`} href={`#team-${s.teamId}`}>
-              <TeamCrest team={s.teamId} size={18} />
-              {teamName(s.teamId)}
-            </a>
-            <span className="race__bar" aria-hidden="true">
-              <span className={`race__fill team-${s.teamId}`} style={{ inlineSize: `${(s.record.rate ?? 0) * 100}%` }} />
-            </span>
-            <span className="race__rate">{formatRate(s.record.rate)}</span>
-            <span className="race__record">{formatRecord(s.record)}</span>
-          </li>
-        ))}
-      </ol>
+      {anyGames && (
+        <Podium
+          label="Team standings by win rate"
+          places={standings.map((s, i) => ({
+            teamId: s.teamId,
+            href: `#team-${s.teamId}`,
+            title: <span className="podium__team">{teamName(s.teamId)}</span>,
+            detail: (
+              <>
+                <span className="podium__rate">{formatRate(s.record.rate)}</span>
+                <span className="podium__record">{formatRecord(s.record)}</span>
+              </>
+            ),
+            rank: sharedRank(standings, i),
+          }))}
+        />
+      )}
 
       <nav className="jump" aria-label="Jump to team">
         {TEAMS.map((t) => (
@@ -145,6 +147,14 @@ export function TeamsPage() {
       />
     </>
   );
+}
+
+/** Teams with the same win rate share a place, since the prize goes by win rate. */
+function sharedRank(standings: ReturnType<typeof rankTeams>, index: number): number {
+  let i = index;
+  const rate = standings[index].record.rate;
+  while (i > 0 && rate !== null && standings[i - 1].record.rate === rate) i -= 1;
+  return i + 1;
 }
 
 function TeamPanel({

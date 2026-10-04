@@ -105,11 +105,12 @@ describe('brackets', () => {
     for (const p of await players()) await checkIn(p.id);
   });
 
-  it('locks four valid pairs and plays through to a champion', async () => {
+  it('locks four valid pairs and plays through the final and the battle for 3rd', async () => {
     await db.query('select set_bracket_pairs($1, $2)', ['F', JSON.stringify(await lockedPairs('F'))]);
     await db.query(`select set_match_winner('F', 'semi1', 1::smallint)`);
     await db.query(`select set_match_winner('F', 'semi2', 2::smallint)`);
     await db.query(`select set_match_winner('F', 'final', 2::smallint)`);
+    await db.query(`select set_match_winner('F', 'third', 0::smallint)`);
     const { rows } = await db.query<{ match: string; winner_slot: number }>(
       `select match, winner_slot from bracket_matches where gender = 'F' order by match`,
     );
@@ -117,7 +118,23 @@ describe('brackets', () => {
       { match: 'final', winner_slot: 2 },
       { match: 'semi1', winner_slot: 1 },
       { match: 'semi2', winner_slot: 2 },
+      { match: 'third', winner_slot: 0 },
     ]);
+  });
+
+  it('only lets the semifinal losers play for 3rd, and drops a stale result when a semi changes', async () => {
+    await db.query('select set_bracket_pairs($1, $2)', ['M', JSON.stringify(await lockedPairs('M'))]);
+    await db.query(`select set_match_winner('M', 'semi1', 0::smallint)`);
+    await expect(db.query(`select set_match_winner('M', 'third', 1::smallint)`)).rejects.toThrow('Finish both');
+    await db.query(`select set_match_winner('M', 'semi2', 3::smallint)`);
+    await expect(db.query(`select set_match_winner('M', 'third', 0::smallint)`)).rejects.toThrow('battle for 3rd');
+    await db.query(`select set_match_winner('M', 'third', 2::smallint)`);
+    await db.query(`select set_match_winner('M', 'semi1', 0::smallint)`);
+    const kept = await db.query(`select 1 from bracket_matches where gender = 'M' and match = 'third'`);
+    expect(kept.rows).toHaveLength(1);
+    await db.query(`select set_match_winner('M', 'semi2', 2::smallint)`);
+    const dropped = await db.query(`select 1 from bracket_matches where gender = 'M' and match = 'third'`);
+    expect(dropped.rows).toHaveLength(0);
   });
 
   it('rejects pairs that mix teams or genders', async () => {

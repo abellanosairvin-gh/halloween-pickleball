@@ -1128,82 +1128,176 @@ div.roster__row {
 
 /* Teams ------------------------------------------------------------------------------- */
 
-.race {
+/* Podium: 1st to 4th, used for team standings and each bracket's final placings. */
+.podium {
   display: grid;
-  gap: 2px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: end;
+  gap: 6px;
   margin-bottom: 24px;
-  padding: 8px 14px;
+  padding: 16px 12px 0;
   border-radius: var(--radius-panel);
   background: var(--surface);
+  overflow: hidden;
 }
 
-.race__row {
+.podium__place {
   display: grid;
-  grid-template-columns: 22px minmax(96px, auto) 1fr 44px 52px;
-  align-items: center;
-  gap: 10px;
-  min-height: 48px;
+  min-width: 0;
 }
 
-.race__rank {
+/* 2nd, 1st, 3rd, 4th from left to right; the list stays in finishing order. */
+.podium__place--1 {
+  order: 2;
+}
+
+.podium__place--2 {
+  order: 1;
+}
+
+.podium__place--3 {
+  order: 3;
+}
+
+.podium__place--4 {
+  order: 4;
+}
+
+.podium__who {
+  display: grid;
+  justify-items: center;
+  align-content: end;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 2px 8px;
+  color: inherit;
+  text-align: center;
+  text-decoration: none;
+}
+
+.podium__crest {
+  margin-bottom: 2px;
+  color: var(--team);
+  filter: drop-shadow(0 0 1px var(--team-edge));
+}
+
+.podium__title {
+  max-width: 100%;
+  font-size: var(--step--1);
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.podium__team {
   font-family: var(--font-display);
-  font-size: var(--step-2);
+  font-size: var(--step-1);
+  line-height: 1;
+}
+
+.podium__names {
+  display: grid;
+}
+
+.podium__detail {
+  display: grid;
+  color: var(--ink-soft);
+  font-size: var(--step--1);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.podium__rate {
+  color: var(--ink);
+  font-size: var(--step-0);
+  font-weight: 800;
+}
+
+.podium__step {
+  display: grid;
+  place-items: center;
+  border-radius: 10px 10px 0 0;
+  background: var(--team);
+  color: var(--on-team);
+  box-shadow: inset 0 0 0 1.5px var(--team-edge);
+  font-family: var(--font-display);
+  font-size: var(--step-1);
   font-weight: 800;
   line-height: 1;
 }
 
-.race__team {
-  justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px 4px 8px;
-  border-radius: var(--radius-pill);
-  background: var(--team);
-  color: var(--on-team);
-  box-shadow: inset 0 0 0 1.5px var(--team-edge);
-  font-weight: 700;
-  font-size: var(--step--1);
-  text-decoration: none;
+.podium__place[data-rank='1'] .podium__step {
+  height: 100px;
+  font-size: var(--step-3);
 }
 
-.race__bar {
-  height: 10px;
-  border-radius: var(--radius-pill);
-  background: var(--rule);
-  overflow: hidden;
+.podium__place[data-rank='2'] .podium__step {
+  height: 76px;
+  font-size: var(--step-2);
 }
 
-.race__fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--team);
-  box-shadow: inset 0 0 0 1px var(--team-edge);
-  transition: inline-size 400ms ease-out;
+.podium__place[data-rank='3'] .podium__step {
+  height: 56px;
+  font-size: var(--step-2);
 }
 
-.race__rate {
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
+.podium__place[data-rank='4'] .podium__step {
+  height: 40px;
 }
 
-.race__record {
-  color: var(--ink-soft);
-  font-size: var(--step--1);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.race__row.is-leader .race__rate {
-  font-size: var(--step-1);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .race__fill {
-    transition: none;
+/* Wide screens give each place a lot of room, so the type and steps grow to match. */
+@media (min-width: 760px) {
+  .podium {
+    gap: 10px;
+    padding: 20px 16px 0;
   }
+
+  .podium__place:first-child .podium__crest {
+    width: 56px;
+    height: 56px;
+  }
+
+  .podium__crest {
+    width: 40px;
+    height: 40px;
+  }
+
+  .podium__team {
+    font-size: var(--step-2);
+  }
+
+  .podium__rate {
+    font-size: var(--step-1);
+  }
+
+  .podium__place[data-rank='1'] .podium__step {
+    height: 128px;
+  }
+
+  .podium__place[data-rank='2'] .podium__step {
+    height: 96px;
+  }
+
+  .podium__place[data-rank='3'] .podium__step {
+    height: 70px;
+  }
+
+  .podium__place[data-rank='4'] .podium__step {
+    height: 50px;
+  }
+}
+
+.podium__place.is-open .podium__title {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.podium__place.is-open .podium__step {
+  border: 1.5px dashed var(--ink-soft);
+  border-bottom: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  box-shadow: none;
 }
 
 .jump {
@@ -1668,6 +1762,22 @@ div.roster__row {
   flex: 1;
 }
 
+/* The battle for 3rd runs across the court below the main bracket, its two sides side by side. */
+.court__third {
+  grid-column: 1 / -1;
+  margin-top: 10px;
+  padding-top: 14px;
+  border-top: 1.5px dashed rgb(244 241 248 / 0.35);
+}
+
+.court__third .match {
+  grid-template-columns: 1fr 1fr;
+}
+
+.court__third .match__label {
+  grid-column: 1 / -1;
+}
+
 .match {
   display: grid;
   gap: 6px;
@@ -1750,39 +1860,6 @@ div.roster__row {
   border-style: dashed;
   color: rgb(244 241 248 / 0.75);
   font-size: var(--step--1);
-}
-
-.champion {
-  display: grid;
-  justify-items: center;
-  gap: 4px;
-  padding: 22px 16px;
-  border: 3px solid var(--team);
-  border-radius: var(--radius-panel);
-  background: var(--surface);
-  text-align: center;
-  box-shadow: inset 0 0 0 1.5px var(--team-edge);
-}
-
-.champion__crest {
-  color: var(--team);
-  filter: drop-shadow(0 0 1px var(--team-edge));
-}
-
-.champion__label {
-  color: var(--ink-soft);
-  font-weight: 700;
-}
-
-.champion__names {
-  font-family: var(--font-display);
-  font-size: var(--step-3);
-  font-weight: 800;
-  line-height: 1;
-}
-
-.champion__team {
-  font-weight: 700;
 }
 
 /* Toast ------------------------------------------------------------------------------- */

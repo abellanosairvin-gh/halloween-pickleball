@@ -41,8 +41,27 @@ export interface BracketView {
   pairsBySlot: Map<number, BracketPair>;
   semis: [MatchView, MatchView];
   final: MatchView;
-  championSlot: number | null;
+  /** The battle for 3rd, between the two semifinal losers. */
+  third: MatchView;
+  /** Slots finishing 1st to 4th; null until the deciding match is played. */
+  placings: [number | null, number | null, number | null, number | null];
 }
+
+/** The slot that lost a semifinal, given its winner. semi1 is 0 v 1 and semi2 is 2 v 3. */
+const semiLoser = (key: 'semi1' | 'semi2', winnerSlot: number | null) =>
+  winnerSlot === null ? null : (key === 'semi1' ? 1 : 5) - winnerSlot;
+
+/** Both sides of the final and the battle for 3rd, once both semifinals are decided. */
+function placementSides(semi1: number | null, semi2: number | null) {
+  return {
+    final: [semi1, semi2] as [number | null, number | null],
+    third: [semiLoser('semi1', semi1), semiLoser('semi2', semi2)] as [number | null, number | null],
+  };
+}
+
+/** The other side of a decided match. */
+const otherSide = (match: MatchView) =>
+  match.winnerSlot === null ? null : (match.sides.find((s) => s !== match.winnerSlot) ?? null);
 
 export function buildBracket(gender: Gender, pairs: readonly BracketPair[], matches: readonly BracketMatch[]): BracketView {
   const own = pairs.filter((p) => p.gender === gender);
@@ -50,7 +69,9 @@ export function buildBracket(gender: Gender, pairs: readonly BracketPair[], matc
   const winner = (key: MatchKey) => matches.find((m) => m.gender === gender && m.match === key)?.winnerSlot ?? null;
   const semi1 = winner('semi1');
   const semi2 = winner('semi2');
-  const finalWinner = winner('final');
+  const sides = placementSides(semi1, semi2);
+  const final: MatchView = { key: 'final', sides: sides.final, winnerSlot: winner('final') };
+  const third: MatchView = { key: 'third', sides: sides.third, winnerSlot: winner('third') };
   return {
     locked: own.length === 4,
     pairsBySlot,
@@ -58,8 +79,9 @@ export function buildBracket(gender: Gender, pairs: readonly BracketPair[], matc
       { key: 'semi1', sides: [0, 1], winnerSlot: semi1 },
       { key: 'semi2', sides: [2, 3], winnerSlot: semi2 },
     ],
-    final: { key: 'final', sides: [semi1, semi2], winnerSlot: finalWinner },
-    championSlot: finalWinner,
+    final,
+    third,
+    placings: [final.winnerSlot, otherSide(final), third.winnerSlot, otherSide(third)],
   };
 }
 
@@ -67,13 +89,13 @@ export function buildBracket(gender: Gender, pairs: readonly BracketPair[], matc
 export function validWinners(view: BracketView, key: MatchKey): number[] {
   if (key === 'semi1') return [0, 1];
   if (key === 'semi2') return [2, 3];
-  const [a, b] = view.final.sides;
+  const [a, b] = view[key].sides;
   return a === null || b === null ? [] : [a, b];
 }
 
 /**
  * Applies a winner (or clears one with null) and returns the new match list for this gender.
- * Changing or clearing a semifinal drops a final that no longer involves that semi's winner.
+ * Changing or clearing a semifinal drops a final or battle for 3rd whose winner is no longer in it.
  */
 export function applyWinner(
   gender: Gender,
@@ -83,10 +105,15 @@ export function applyWinner(
 ): BracketMatch[] {
   let own = matches.filter((m) => m.gender === gender && m.match !== key);
   if (winnerSlot !== null) own.push({ gender, match: key, winnerSlot });
-  if (key !== 'final') {
-    const semiWinners = own.filter((m) => m.match !== 'final').map((m) => m.winnerSlot);
-    own = own.filter((m) => m.match !== 'final' || semiWinners.includes(m.winnerSlot));
-    if (own.filter((m) => m.match !== 'final').length < 2) own = own.filter((m) => m.match !== 'final');
+  if (key === 'semi1' || key === 'semi2') {
+    const semi = (k: MatchKey) => own.find((m) => m.match === k)?.winnerSlot ?? null;
+    const sides = placementSides(semi('semi1'), semi('semi2'));
+    const stillIn = (m: BracketMatch) => {
+      if (m.match !== 'final' && m.match !== 'third') return true;
+      const [a, b] = sides[m.match];
+      return a !== null && b !== null && (m.winnerSlot === a || m.winnerSlot === b);
+    };
+    own = own.filter(stillIn);
   }
   return own;
 }

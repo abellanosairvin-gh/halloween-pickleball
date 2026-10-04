@@ -57,7 +57,31 @@ describe('advancing the bracket', () => {
     expect(view.final.sides).toEqual([1, 2]);
     expect(validWinners(view, 'final')).toEqual([1, 2]);
     matches = applyWinner('F', matches, 'final', 2);
-    expect(buildBracket('F', pairs, matches).championSlot).toBe(2);
+    expect(buildBracket('F', pairs, matches).placings).toEqual([2, 1, null, null]);
+  });
+
+  it('sends semi losers to the battle for 3rd and fills the podium', () => {
+    let matches: BracketMatch[] = [];
+    matches = applyWinner('F', matches, 'semi1', 1);
+    expect(validWinners(buildBracket('F', pairs, matches), 'third')).toEqual([]);
+    matches = applyWinner('F', matches, 'semi2', 2);
+    const view = buildBracket('F', pairs, matches);
+    expect(view.third.sides).toEqual([0, 3]);
+    expect(validWinners(view, 'third')).toEqual([0, 3]);
+    matches = applyWinner('F', matches, 'third', 3);
+    expect(buildBracket('F', pairs, matches).placings).toEqual([null, null, 3, 0]);
+    matches = applyWinner('F', matches, 'final', 1);
+    expect(buildBracket('F', pairs, matches).placings).toEqual([1, 2, 3, 0]);
+  });
+
+  it('drops a battle for 3rd whose winner no longer lost a semifinal', () => {
+    let matches: BracketMatch[] = [];
+    matches = applyWinner('F', matches, 'semi1', 0);
+    matches = applyWinner('F', matches, 'semi2', 3);
+    matches = applyWinner('F', matches, 'third', 2);
+    expect(applyWinner('F', matches, 'semi1', 1).find((m) => m.match === 'third')?.winnerSlot).toBe(2);
+    expect(applyWinner('F', matches, 'semi2', 2).some((m) => m.match === 'third')).toBe(false);
+    expect(applyWinner('F', matches, 'semi1', null).some((m) => m.match === 'third')).toBe(false);
   });
 
   it('drops the final when a semifinal result changes or is cleared', () => {
