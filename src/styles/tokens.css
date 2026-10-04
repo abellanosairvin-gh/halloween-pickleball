@@ -1,0 +1,112 @@
+/* "Varsity after dark": a pale moon-fog page, blackletter jersey type, and the four team colours as the only accents. */
+
+:root {
+  color-scheme: light;
+
+  --page: #e7e4ec; /* moonfog */
+  --surface: #faf9fb; /* bone */
+  --ink: #1b1724;
+  --ink-soft: #57506a;
+  --rule: #d3cddc;
+  --focus: #6a3d9a;
+  --danger: #b3261e;
+  --scrim: rgb(22 17 30 / 0.6);
+
+  /* Results: only used for wins and losses. */
+  --win: #1f8a4c;
+  --loss: #c8372d;
+  --on-result: #ffffff;
+
+  /* The bracket sits on a night court with real court lines. */
+  --court: #2a2140;
+  --court-line: #f4f1f8;
+
+  --pumpkin: #f0661a;
+  --on-pumpkin: #1b1724;
+  --witch: #6a3d9a;
+  --on-witch: #ffffff;
+  --skull: #8c9097;
+  --on-skull: #1b1724;
+  --bat: #000000;
+  --on-bat: #ffffff;
+  --bat-edge: transparent;
+
+  --font-display: 'Grenze Gotisch', 'Iowan Old Style', Georgia, serif;
+  --font-ui: 'Atkinson Hyperlegible Next', 'Segoe UI', system-ui, sans-serif;
+
+  /* 14 / 16 / 20 / 28 / 44 */
+  --step--1: 0.875rem;
+  --step-0: 1rem;
+  --step-1: 1.25rem;
+  --step-2: 1.75rem;
+  --step-3: 2.75rem;
+
+  --radius-cell: 3px;
+  --radius-control: 10px;
+  --radius-panel: 16px;
+  --radius-pill: 999px;
+
+  --gutter: 16px;
+  --tabbar-h: 64px;
+  --max-width: 1100px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --page: #16111e;
+    --surface: #211a2c;
+    --ink: #efebf5;
+    --ink-soft: #ada4bd;
+    --rule: #3a3049;
+    --focus: #c9a8f0;
+    --danger: #ff8a80;
+    --scrim: rgb(8 5 12 / 0.72);
+    --win: #3fbf73;
+    --loss: #ff6b5e;
+    --on-result: #16111e;
+    --court: #2e2447;
+    --witch: #8a5cc4;
+    --bat-edge: #7a7090;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --page: #16111e;
+  --surface: #211a2c;
+  --ink: #efebf5;
+  --ink-soft: #ada4bd;
+  --rule: #3a3049;
+  --focus: #c9a8f0;
+  --danger: #ff8a80;
+  --scrim: rgb(8 5 12 / 0.72);
+  --win: #3fbf73;
+  --loss: #ff6b5e;
+  --on-result: #16111e;
+  --court: #2e2447;
+  --witch: #8a5cc4;
+  --bat-edge: #7a7090;
+}
+
+/* Any element tagged with a team gets that team's colour pair to use. */
+.team-pumpkin {
+  --team: var(--pumpkin);
+  --on-team: var(--on-pumpkin);
+  --team-edge: transparent;
+}
+.team-witch {
+  --team: var(--witch);
+  --on-team: var(--on-witch);
+  --team-edge: transparent;
+}
+.team-skull {
+  --team: var(--skull);
+  --on-team: var(--on-skull);
+  --team-edge: transparent;
+}
+.team-bat {
+  --team: var(--bat);
+  --on-team: var(--on-bat);
+  --team-edge: var(--bat-edge);
+}

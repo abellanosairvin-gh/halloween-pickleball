@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+.env.local
+~$*
+.memsearch
+
+# Kept out of the repository
+Claude outputs/
+.claude/
+pickleball_players.xlsx
