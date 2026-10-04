@@ -985,72 +985,80 @@ a {
 }
 
 .qr--page {
-  width: min(440px, 78vw, 46vh);
-  border-radius: 12px;
+  width: 100%;
 }
 
-/* QR page: a Halloween night poster trimmed in the four team colours, made for a big screen. */
+/* Keep the approved poster intact; the live SVG replaces its illustrated sample QR. */
 .qr-page {
-  --sheet-trim: linear-gradient(90deg, var(--pumpkin) 0 25%, var(--witch) 25% 50%, var(--skull) 50% 75%, var(--bat) 75%);
   display: grid;
   justify-items: center;
   align-content: center;
-  gap: 14px;
-  min-height: 100vh;
-  min-height: 100dvh;
-  padding: 32px 16px 24px;
-  background:
-    var(--sheet-trim) top / 100% 10px no-repeat,
-    radial-gradient(120% 70% at 50% 0%, rgb(240 102 26 / 0.22), transparent 60%),
-    var(--court);
-  color: var(--court-line);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 12px;
+  height: 100vh;
+  height: 100dvh;
+  padding: 16px;
+  background: radial-gradient(ellipse at center, #30203d, #100c17 75%);
+  color: #fff3da;
   color-scheme: dark;
   text-align: center;
 }
 
-.qr-page__title {
-  max-width: 24ch;
-  font-family: var(--font-display);
-  font-size: clamp(2.25rem, 6vw, 4rem);
-  line-height: 0.95;
-  text-wrap: balance;
-}
-
-.qr-sheet__crests {
-  display: flex;
-  gap: 12px;
-}
-
-.qr-sheet__crest {
+.qr-page__stage {
   display: grid;
   place-items: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: var(--team);
-  color: var(--on-team);
-  box-shadow: 0 0 0 2px var(--court), 0 0 0 3.5px rgb(244 241 248 / 0.55);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  container-type: size;
 }
 
-/* The QR sits on white (what phone cameras read best) inside a frame of the four team colours. */
-.qr-sheet__frame {
-  padding: 10px;
-  border-radius: 18px;
-  background: conic-gradient(from -45deg, var(--pumpkin) 0 25%, var(--witch) 0 50%, var(--skull) 0 75%, #1b1724 0);
-  box-shadow: 0 0 0 1.5px rgb(244 241 248 / 0.55), 0 10px 40px rgb(240 102 26 / 0.25);
+.qr-page__poster {
+  position: relative;
+  /* The stage is the viewport space left after padding and any local-link notice. */
+  width: min(100cqw, calc(100cqh * 2 / 3));
+  aspect-ratio: 2 / 3;
+  isolation: isolate;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.45);
 }
 
-.qr-sheet__lede {
-  max-width: 22ch;
-  font-size: clamp(var(--step-1), 3vw, var(--step-2));
-  font-weight: 800;
-  line-height: 1.2;
+.qr-page__art {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
-.qr-sheet__sub {
-  max-width: 34ch;
-  color: rgb(244 241 248 / 0.78);
-  font-size: clamp(var(--step-0), 2vw, var(--step-1));
+/*
+ * Percentages are anchored to the uncropped 1024 × 1536 artwork, at every screen size. The panel spans
+ * the art's white doorway (x 342–678, y 570–920). Multiplying parchment over it turns the white to
+ * parchment but keeps Dracula's fingertips, which reach x 355. The door is just big enough to hide the
+ * sample code's modules (x 370–655, y 597–893), so it stays clear of the fingers.
+ */
+.qr-page__panel {
+  position: absolute;
+  left: 33.4%;
+  top: 37.11%;
+  width: 32.81%;
+  height: 22.79%;
+  background: #e9dcbc;
+  mix-blend-mode: multiply;
+}
+
+.qr-page__door {
+  position: absolute;
+  left: 35.25%;
+  top: 38.67%;
+  width: 29.49%;
+  aspect-ratio: 1;
+  display: block;
+  background: #e9dcbc;
+  line-height: 0;
+}
+
+.qr-page a:focus-visible {
+  outline: 3px solid #f9cd73;
+  outline-offset: 4px;
 }
 
 .qr-sheet__warning {
