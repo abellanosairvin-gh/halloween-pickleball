@@ -8,34 +8,41 @@ Organizer site for the party: check players in (which assigns their team), recor
 
 ## How teams stay fair
 
-`check_in_player` (in `supabase/migrations/0001_init.sql`, mirrored in `src/domain/assign.ts`) puts each arriving player on the team with the fewest checked-in players of the same gender and skill, then the same gender, then fewest overall, then at random. Every gender × skill group stays within one player across teams no matter who arrives when. With all 40 players, each team gets 2–3 A women and 4–5 A men. Check-ins are serialized in the database, so simultaneous QR check-ins can't unbalance it.
+`check_in_player` (in `db/migrations/0001_schema.sql`, mirrored in `src/domain/assign.ts`) puts each arriving player on the team with the fewest checked-in players of the same gender and skill, then the same gender, then fewest overall, then at random. Every gender × skill group stays within one player across teams no matter who arrives when. With all 40 players, each team gets 2–3 A women and 4–5 A men. Check-ins are serialized in the database, so simultaneous QR check-ins can't unbalance it.
 
-## Run it locally (demo mode)
+## How it fits together
+
+- **Database:** [Neon](https://neon.tech) Postgres. The schema, the check-in balancing and the bracket rules are SQL in `db/migrations`.
+- **API:** Vercel functions in `api/` sit between the site and the database. Anyone can read the event data and check in (`/api/state`, `/api/versions`, `/api/check-in`). Every other change goes through `/api/organizer`, which needs the organizer's session cookie.
+- **Sign-in:** one shared organizer password (`ORGANIZER_PASSWORD`). Signing in sets an HttpOnly cookie, signed with `SESSION_SECRET`, that lasts 3 days.
+- **Live updates:** every open page polls `/api/versions` every 3 seconds while it's on screen, and refetches only the tables that changed. Hidden tabs stop polling, so Neon can scale to zero when nobody is looking.
+
+## Run it locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-Without Supabase settings the app runs in **demo mode**: data is kept in this browser's local storage, and the login accepts any email with the password `boo`. Use **Reset demo data** on any page to start over.
+Without a `DATABASE_URL` the app runs in **demo mode**: data is kept in this browser's local storage and the password is `boo`. Use **Reset demo data** on any page to start over.
 
-## Connect Supabase
+To run against Neon instead, copy `.env.example` to `.env`, fill in all three settings, run `npm run db:setup` once, and restart `npm run dev`. The dev server serves the `api/` functions too.
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. In the SQL editor, run each file in `supabase/migrations` in order (`0001_init.sql`, then `0002_simulated_results.sql`, then `0003_party_page.sql`, then `0004_battle_for_third.sql`), then `supabase/seed.sql`. If you already ran `0001`, just run the newer files.
-3. Under **Authentication → Users**, add the organizer (email and password). Turn off public sign-ups under **Authentication → Providers → Email** so nobody else can create an account.
-4. Copy `.env.example` to `.env` and fill in the project URL and anon key from **Project Settings → API**.
-5. `npm run dev`, then sign in as the organizer.
+## Set up Neon
 
-Changes appear live on every signed-in device through Supabase Realtime.
+1. Create a project at [neon.tech](https://neon.tech). Pick the region closest to where the party is.
+2. Copy the **pooled** connection string (Connect → Pooled connection) into `.env` as `DATABASE_URL`.
+3. Run `npm run db:setup`. It applies `db/migrations` in order (each only once) and loads the 40 players from `db/seed.sql` if the players table is empty. It's safe to run again after pulling new migrations.
 
 ## Deploy (Vercel)
 
-Import the folder as a Vite project, add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as environment variables, and deploy. `vercel.json` routes every path to the app.
+Set three environment variables on the Vercel project: `DATABASE_URL`, `ORGANIZER_PASSWORD` and `SESSION_SECRET`. Then deploy. `vercel.json` sends every path except `/api/*` to the app, and Vercel picks up the functions in `api/` on its own.
+
+`DATABASE_URL` must be set **before** the build: a build without it comes out in demo mode. If you add or change it later, redeploy. Changing `SESSION_SECRET` signs everyone out. Changing `ORGANIZER_PASSWORD` only affects new sign-ins.
 
 ## Updating the roster
 
-For changes on the day, use **Edit list** on the Players tab. To reload the whole list, put `pickleball_players.xlsx` in the project root (it isn't committed to the repository), edit it, and run `npm run seed:sql`. This regenerates `supabase/seed.sql` and the demo roster. Re-running the seed on Supabase updates existing players by name and adds new ones. It also brings back anyone deleted in the app who is still in the spreadsheet.
+For changes on the day, use **Edit list** on the Players tab. To reload the whole list, put `pickleball_players.xlsx` in the project root (it isn't committed to the repository), edit it, and run `npm run seed:sql`. This regenerates `db/seed.sql` and the demo roster. `npm run db:setup` only loads the seed into an empty players table. To apply a changed list to a database that already has players, run `db/seed.sql` in the Neon SQL editor. That updates existing players by name and adds new ones, and it also brings back anyone deleted in the app who is still in the spreadsheet.
 
 ## Tests
 
@@ -43,7 +50,7 @@ For changes on the day, use **Edit list** on the Players tab. To reload the whol
 npm test
 ```
 
-Covers team balancing for any arrival order, standings and tie-breaks, qualifiers, the random draw and bracket progression. It also runs the real SQL migration in an in-memory Postgres (PGlite) to check `check_in_player` and the bracket functions.
+Covers team balancing for any arrival order, standings and tie-breaks, qualifiers, the random draw and bracket progression. It also runs the real migrations in an in-memory Postgres (PGlite) to check `check_in_player`, the bracket functions and the change counters. It also calls the API handlers against that database to check sign-in, the organizer-only actions and the error messages.
 
 ## Party page and QR code
 
@@ -52,6 +59,6 @@ Guests don't need an account. The **QR code** button in the organizer header sho
 - **Check in** – guests find their name, confirm "Check in as …?", and see their team reveal. Their phone remembers them and shows "Irene, you're on Witch" on every tab.
 - **Teams** and **Tournament** – the live standings and brackets, read-only.
 
-Set `VITE_PUBLIC_URL` to the deployed address so the QR code points at the live site even when you open the organizer screens elsewhere. The QR dialog warns you if the link would point at `localhost`.
+The QR code uses the address the organizer has open, so open the organizer screens on the deployed site before showing or printing it. Set `VITE_PUBLIC_URL` if you use a custom domain or want the code to always point at one address. The QR dialog warns you if the link would point at `localhost`.
 
-Anonymous visitors can read players, results and brackets (`0003_party_page.sql`). The only change they can make is checking in through `check_in_player`. Everything else is refused by the database, which the SQL tests check by running as the `anon` role.
+Guests can read players, results and brackets, and the only change they can make is checking in. Everything else needs the organizer session, which `tests/api.test.ts` checks.

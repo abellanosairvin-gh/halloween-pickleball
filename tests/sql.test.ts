@@ -4,12 +4,12 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { TEAM_IDS } from '../src/domain/teams';
 import { bucketSpreads, seededRandom, shuffled } from './fixtures';
 
-// Every migration, applied in file-name order, the same way Supabase applies them.
-const migrations = readdirSync('supabase/migrations')
+// Every migration, applied in file-name order, the same way scripts/db-setup.mjs applies them.
+const migrations = readdirSync('db/migrations')
   .filter((f) => f.endsWith('.sql'))
   .sort()
-  .map((f) => readFileSync(`supabase/migrations/${f}`, 'utf8'));
-const seed = readFileSync('supabase/seed.sql', 'utf8');
+  .map((f) => readFileSync(`db/migrations/${f}`, 'utf8'));
+const seed = readFileSync('db/seed.sql', 'utf8');
 
 type PlayerRow = { id: string; name: string; gender: string; skill: string; team_id: string | null };
 
@@ -17,14 +17,6 @@ let db: PGlite;
 
 beforeEach(async () => {
   db = new PGlite();
-  // Roles and default grants that exist in every Supabase project; the migrations' revokes and
-  // row-level security are what actually restrict them.
-  await db.exec(`
-    create role anon; create role authenticated;
-    grant usage on schema public to anon, authenticated;
-    alter default privileges in schema public grant all on tables to anon, authenticated;
-    alter default privileges in schema public grant all on functions to anon, authenticated;
-  `);
   for (const sql of migrations) await db.exec(sql);
   await db.exec(seed);
 });
@@ -79,7 +71,7 @@ describe('check_in_player', () => {
   });
 
   it('rejects an unknown player', async () => {
-    await expect(checkIn('00000000-0000-0000-0000-000000000000')).rejects.toThrow('Player not found');
+    await expect(checkIn('00000000-0000-0000-0000-000000000000')).rejects.toThrow('isn’t on the list');
   });
 
   it('refuses a team without a check-in', async () => {
@@ -88,15 +80,25 @@ describe('check_in_player', () => {
   });
 });
 
-describe('player_stats', () => {
-  it('reports wins, losses and win rate', async () => {
-    const [p] = await players();
-    await db.query(`insert into results (player_id, outcome) values ($1,'W'),($1,'W'),($1,'L')`, [p.id]);
-    const { rows } = await db.query<{ wins: number; losses: number; win_rate: string }>(
-      'select wins::int, losses::int, win_rate::text from player_stats where player_id = $1',
-      [p.id],
+describe('change counters', () => {
+  const versions = async () =>
+    Object.fromEntries(
+      (await db.query<{ name: string; version: number }>('select name, version::int from table_versions')).rows.map((r) => [
+        r.name,
+        r.version,
+      ]),
     );
-    expect(rows[0]).toEqual({ wins: 2, losses: 1, win_rate: '0.6667' });
+
+  it('move only for the table that changed, once per statement', async () => {
+    const before = await versions();
+    const [p] = await players();
+    await checkIn(p.id);
+    await db.query(`insert into results (player_id, outcome) values ($1, 'W'), ($1, 'L')`, [p.id]);
+    const after = await versions();
+    expect(after.players).toBe(before.players + 1);
+    expect(after.results).toBe(before.results + 1);
+    expect(after.pairs).toBe(before.pairs);
+    expect(after.matches).toBe(before.matches);
   });
 });
 
@@ -228,70 +230,15 @@ describe('editing the roster', () => {
 });
 
 describe('simulated results', () => {
-  it('are flagged, count toward stats, and clear without touching hand-entered results', async () => {
+  it('are flagged, count as games, and clear without touching hand-entered results', async () => {
     const [p] = await players();
     await db.query(`insert into results (player_id, outcome) values ($1, 'W')`, [p.id]);
     await db.query(`insert into results (player_id, outcome, simulated) values ($1, 'L', true), ($1, 'L', true)`, [p.id]);
     const stats = async () =>
-      (await db.query<{ games: number }>('select games::int from player_stats where player_id = $1', [p.id])).rows[0].games;
+      (await db.query<{ games: number }>('select count(*)::int as games from results where player_id = $1', [p.id])).rows[0]
+        .games;
     expect(await stats()).toBe(3);
     await db.query('delete from results where simulated');
     expect(await stats()).toBe(1);
-  });
-});
-
-describe('anonymous visitors (party page)', () => {
-  const asAnon = async <T,>(fn: () => Promise<T>) => {
-    await db.exec('set role anon');
-    try {
-      return await fn();
-    } finally {
-      await db.exec('reset role');
-    }
-  };
-
-  beforeEach(async () => {
-    const all = await players();
-    for (const p of all) await checkIn(p.id);
-    await recordGames(all[0].id, 3);
-  });
-
-  it('can read everything the party page shows', async () => {
-    await asAnon(async () => {
-      expect((await db.query('select id, name, gender, team_id from players')).rows).toHaveLength(40);
-      expect((await db.query('select player_id, outcome from results')).rows).toHaveLength(3);
-      expect((await db.query('select * from teams')).rows).toHaveLength(4);
-      await db.query('select * from bracket_pairs');
-      await db.query('select * from bracket_matches');
-      await db.query('select * from player_stats');
-    });
-  });
-
-  it('can check themselves in', async () => {
-    const [p] = await players();
-    await db.query('update players set team_id = null, checked_in_at = null where id = $1', [p.id]);
-    const team = await asAnon(() => checkIn(p.id));
-    expect(TEAM_IDS).toContain(team);
-  });
-
-  it('cannot change anything else', async () => {
-    const [p] = await players();
-    const attempts = [
-      ["insert into results (player_id, outcome) values ($1, 'W')", [p.id]],
-      ['delete from results', []],
-      ["update players set team_id = 'bat' where id = $1", [p.id]],
-      ['update players set team_id = null, checked_in_at = null where id = $1', [p.id]],
-      ["insert into players (name, gender, skill) values ('Intruder', 'M', 'A')", []],
-      ['delete from players where id = $1', [p.id]],
-      ["select set_bracket_pairs('F', '[]'::jsonb)", []],
-      ["select set_match_winner('F', 'semi1', 0::smallint)", []],
-      ["select reset_bracket('F')", []],
-    ] as const;
-    for (const [sql, params] of attempts) {
-      await expect(asAnon(() => db.query(sql, [...params])), sql).rejects.toThrow(/permission denied/);
-    }
-    const after = await players();
-    expect(after.find((x) => x.id === p.id)?.team_id).not.toBeNull();
-    expect((await db.query('select 1 from results')).rows).toHaveLength(3);
   });
 });

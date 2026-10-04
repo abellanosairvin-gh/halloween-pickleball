@@ -3,12 +3,12 @@ import { applyWinner, validWinners, buildBracket } from '../domain/bracket';
 import { lockedPairMessage, lockedPairPlayerIds, nameProblem, normalizeName } from '../domain/roster';
 import { isPairEligible, MIN_PAIR_GAMES, playerRecords } from '../domain/standings';
 import type { Player, Snapshot, TableName } from '../domain/types';
-import type { AuthClient, Repo, Session } from './repo';
+import type { AuthClient, Repo } from './repo';
 import { SEED_PLAYERS } from './seedPlayers';
 
 /**
  * Demo-mode storage: everything lives in this browser's localStorage, and a BroadcastChannel
- * stands in for realtime so other tabs stay in sync. Used when no Supabase project is configured.
+ * stands in for realtime so other tabs stay in sync. Used when the site is built without a database.
  */
 
 const STORE_KEY = 'hpp-demo-store-v1';
@@ -238,19 +238,16 @@ export function resetDemoData() {
 }
 
 export function createLocalAuth(): AuthClient {
-  const listeners = new Set<(s: Session | null) => void>();
-  const current = (): Session | null => {
-    const raw = safeGet(SESSION_KEY);
-    return raw ? (JSON.parse(raw) as Session) : null;
-  };
+  const listeners = new Set<(signedIn: boolean) => void>();
+  const current = () => Boolean(safeGet(SESSION_KEY));
   const emit = () => listeners.forEach((l) => l(current()));
   return {
-    async getSession() {
+    async isSignedIn() {
       return current();
     },
-    async signIn(email, password) {
+    async signIn(password) {
       if (password !== DEMO_PASSWORD) throw new Error(`In demo mode the password is “${DEMO_PASSWORD}”.`);
-      safeSet(SESSION_KEY, JSON.stringify({ email }));
+      safeSet(SESSION_KEY, '1');
       emit();
     },
     async signOut() {

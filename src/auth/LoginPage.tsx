@@ -7,7 +7,6 @@ import { useAuth } from './Auth';
 export function LoginPage() {
   const state = useAuth();
   const location = useLocation();
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -22,7 +21,7 @@ export function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      await auth.signIn(email.trim(), password);
+      await auth.signIn(password);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -36,23 +35,15 @@ export function LoginPage() {
         <h1 className="login__title">Irvin’s Halloween Pickleball Party</h1>
         <p className="login__lede">Organizer sign in</p>
 
-        <label className="field">
-          <span className="field__label">Email</span>
-          <input
-            className="input"
-            type="email"
-            autoComplete="username"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </label>
+        {/* Lets password managers save the shared organizer password under a name. */}
+        <input type="text" name="username" autoComplete="username" value="organizer" readOnly hidden />
         <label className="field">
           <span className="field__label">Password</span>
           <input
             className="input"
             type="password"
             autoComplete="current-password"
+            autoFocus
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -65,13 +56,13 @@ export function LoginPage() {
           </p>
         )}
 
-        <button type="submit" className="btn btn--primary btn--block" disabled={busy || !email || !password}>
+        <button type="submit" className="btn btn--primary btn--block" disabled={busy || !password}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
 
         {isDemo && (
           <p className="login__note">
-            Demo mode: use any email with the password “{DEMO_PASSWORD}”. Data stays in this browser until Supabase is
+            Demo mode: the password is “{DEMO_PASSWORD}”. Data stays in this browser until a database is
             connected.
           </p>
         )}

@@ -2,7 +2,7 @@ import type { PlayerDraft } from '../domain/roster';
 import type { ResultEntry } from '../domain/simulate';
 import type { BracketPair, Gender, GameResult, MatchKey, Outcome, Player, Snapshot, TableName, TeamId } from '../domain/types';
 
-/** Everything the organizer screens read and write. Implemented by Supabase and by the local demo store. */
+/** Everything the screens read and write. Implemented by the API (Neon) and by the local demo store. */
 export interface Repo {
   fetchAll(): Promise<Snapshot>;
   fetchTable<T extends TableName>(table: T): Promise<Snapshot[T]>;
@@ -30,13 +30,10 @@ export interface Repo {
   resetBracket(gender: Gender): Promise<void>;
 }
 
-export interface Session {
-  email: string;
-}
-
+/** The organizer's sign-in. There's one shared organizer password, so there are no user accounts. */
 export interface AuthClient {
-  getSession(): Promise<Session | null>;
-  signIn(email: string, password: string): Promise<void>;
+  isSignedIn(): Promise<boolean>;
+  signIn(password: string): Promise<void>;
   signOut(): Promise<void>;
-  onChange(cb: (session: Session | null) => void): () => void;
+  onChange(cb: (signedIn: boolean) => void): () => void;
 }

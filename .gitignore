@@ -9,3 +9,7 @@ dist
 Claude outputs/
 .claude/
 pickleball_players.xlsx
+
+.vercel
+.env*
+!.env.example

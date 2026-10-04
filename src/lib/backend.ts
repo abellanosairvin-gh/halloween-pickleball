@@ -1,15 +1,12 @@
-import { createClient } from '@supabase/supabase-js';
+import { createApiAuth, createApiRepo } from '../data/apiRepo';
 import { createLocalAuth, createLocalRepo } from '../data/localRepo';
 import type { AuthClient, Repo } from '../data/repo';
-import { createSupabaseAuth, createSupabaseRepo } from '../data/supabaseRepo';
 
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+/**
+ * True when the site was built without a database (no DATABASE_URL): data stays in this browser
+ * only. Set by vite.config.ts at build time.
+ */
+export const isDemo = !__HAS_DATABASE__;
 
-/** True when no Supabase project is configured: data stays in this browser only. */
-export const isDemo = !url || !anonKey;
-
-const supabase = url && anonKey ? createClient(url, anonKey) : null;
-
-export const repo: Repo = supabase ? createSupabaseRepo(supabase) : createLocalRepo();
-export const auth: AuthClient = supabase ? createSupabaseAuth(supabase) : createLocalAuth();
+export const repo: Repo = isDemo ? createLocalRepo() : createApiRepo();
+export const auth: AuthClient = isDemo ? createLocalAuth() : createApiAuth();

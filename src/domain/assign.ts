@@ -10,7 +10,7 @@ export type RandomSource = () => number;
  * then the same gender, then total size, then a random tie-break. This keeps every
  * gender × skill group within one player across teams regardless of arrival order.
  *
- * Mirrors public.check_in_player in supabase/migrations/0001_init.sql — keep them in sync.
+ * Mirrors check_in_player in db/migrations/0001_schema.sql — keep them in sync.
  */
 export function pickTeam(players: readonly Player[], newcomer: Player, random: RandomSource = Math.random): TeamId {
   const scored = TEAM_IDS.map((teamId) => {

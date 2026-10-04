@@ -9,10 +9,11 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "seed:sql": "node scripts/build-seed.mjs"
+    "seed:sql": "node scripts/build-seed.mjs",
+    "db:setup": "node scripts/db-setup.mjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.117.2",
+    "@neondatabase/serverless": "^1.2.0",
     "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
