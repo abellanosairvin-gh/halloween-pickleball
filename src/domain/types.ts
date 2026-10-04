@@ -17,6 +17,8 @@ export interface GameResult {
   playerId: string;
   outcome: Outcome;
   createdAt: string;
+  /** Created by "Simulate 5 games" rather than entered by hand. */
+  simulated: boolean;
 }
 
 /** One of the four fixed doubles pairs in a gender's bracket. `slot` comes from the random draw. */

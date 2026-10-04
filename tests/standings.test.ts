@@ -19,6 +19,7 @@ const result = (playerId: string, outcome: Outcome): GameResult => ({
   playerId,
   outcome,
   createdAt: '',
+  simulated: false,
 });
 const games = (playerId: string, wins: number, losses: number) => [
   ...Array.from({ length: wins }, () => result(playerId, 'W')),

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Dialog } from '../components/Dialog';
+import { ConfirmDialog, Dialog } from '../components/Dialog';
 import { TeamCrest } from '../components/TeamCrest';
 import { useToast } from '../components/Toast';
 import { useEventData } from '../data/EventData';
@@ -8,12 +8,12 @@ import {
   compareByStanding,
   formatRate,
   formatRecord,
-  qualifiers,
   rankTeams,
   recordOf,
   teamMembers,
   teamRecord,
 } from '../domain/standings';
+import { SIMULATED_GAMES, simulatedResults } from '../domain/simulate';
 import { GENDER_LABEL, TEAMS, teamName } from '../domain/teams';
 import type { Gender, Outcome, Player, TeamId } from '../domain/types';
 
@@ -21,12 +21,28 @@ import type { Gender, Outcome, Player, TeamId } from '../domain/types';
 const HISTORY_SHOWN = 30;
 
 export function TeamsPage() {
-  const { data, records } = useEventData();
+  const { data, records, run } = useEventData();
   const players = data!.players;
   const standings = rankTeams(players, records);
   const anyGames = standings.some((s) => s.record.games > 0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pending, setPending] = useState<{ player: Player; outcome: Outcome } | null>(null);
+  const [removal, setRemoval] = useState<Removal | null>(null);
+  const [confirmSimulate, setConfirmSimulate] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const toast = useToast();
+
+  const checkedIn = players.filter((p) => p.teamId).length;
+  const simulatedCount = data!.results.filter((r) => r.simulated).length;
+
+  const simulate = async () => {
+    const added = await run(['results'], (r) => r.addSimulatedResults(simulatedResults(players)));
+    if (added) toast.show(`Added ${added} simulated results`);
+  };
+  const clearSimulated = async () => {
+    const removed = await run(['results'], (r) => r.clearSimulatedResults());
+    if (removed !== undefined) toast.show(`Cleared ${removed} simulated results`);
+  };
 
   return (
     <>
@@ -35,6 +51,22 @@ export function TeamsPage() {
         {!anyGames && (
           <p className="page-meta">Win rates appear once results are recorded. Add a win or loss next to a player after each game.</p>
         )}
+        {simulatedCount > 0 && (
+          <p className="page-meta">
+            Includes {simulatedCount} simulated {simulatedCount === 1 ? 'result' : 'results'}. Clear them before the
+            real games start.
+          </p>
+        )}
+        <div className="page-actions">
+          <button type="button" className="btn btn--small" disabled={checkedIn === 0} onClick={() => setConfirmSimulate(true)}>
+            Simulate {SIMULATED_GAMES} games
+          </button>
+          {simulatedCount > 0 && (
+            <button type="button" className="btn btn--small btn--danger-quiet" onClick={() => setConfirmClear(true)}>
+              Clear simulated results
+            </button>
+          )}
+        </div>
       </header>
 
       <ol className="race" aria-label="Team standings by win rate">
@@ -74,8 +106,35 @@ export function TeamsPage() {
         ))}
       </div>
 
-      <RecordSheet player={players.find((p) => p.id === editingId) ?? null} onClose={() => setEditingId(null)} />
-      <ConfirmResult pending={pending} onClose={() => setPending(null)} />
+      <RecordSheet
+        player={players.find((p) => p.id === editingId) ?? null}
+        onClose={() => setEditingId(null)}
+        onRemove={(r) => {
+          setEditingId(null);
+          setRemoval(r);
+        }}
+      />
+      <ConfirmResult pending={pending} onClose={() => setPending(null)} onUndo={setRemoval} />
+      <ConfirmRemoval removal={removal} onClose={() => setRemoval(null)} />
+      <ConfirmDialog
+        open={confirmSimulate}
+        title={`Simulate ${SIMULATED_GAMES} games each?`}
+        message={`This adds ${SIMULATED_GAMES} random wins or losses for each of the ${checkedIn} checked-in players, ${
+          checkedIn * SIMULATED_GAMES
+        } results in all. They’re marked as simulated, so you can clear them later without touching real results.`}
+        confirmLabel="Simulate games"
+        tone="primary"
+        onCancel={() => setConfirmSimulate(false)}
+        onConfirm={() => void simulate()}
+      />
+      <ConfirmDialog
+        open={confirmClear}
+        title="Clear simulated results?"
+        message={`This removes all ${simulatedCount} simulated results. Results you entered with +W and +L stay.`}
+        confirmLabel="Clear simulated results"
+        onCancel={() => setConfirmClear(false)}
+        onConfirm={() => void clearSimulated()}
+      />
     </>
   );
 }
@@ -99,7 +158,6 @@ function TeamPanel({
   }, [data]);
   const members = useMemo(() => teamMembers(players, teamId).sort(compareByStanding(records)), [players, teamId, records]);
   const record = teamRecord(players, records, teamId);
-  const pairIds = new Set([...qualifiers(players, records, teamId, 'F'), ...qualifiers(players, records, teamId, 'M')].map((p) => p.id));
   const women = members.filter((p) => p.gender === 'F').length;
 
   return (
@@ -141,13 +199,6 @@ function TeamPanel({
                           <span className="member__name">{p.name}</span>
                           <ResultHistory outcomes={history.get(p.id) ?? []} />
                         </span>
-                        {pairIds.has(p.id) && (
-                          <span className="member__tags">
-                            <span className="member__pair" title={`In ${teamName(teamId)}’s ${GENDER_LABEL[gender].toLowerCase()}’s pair`}>
-                              Pair
-                            </span>
-                          </span>
-                        )}
                       </span>
                       <button
                         type="button"
@@ -198,8 +249,23 @@ function ResultHistory({ outcomes }: { outcomes: Outcome[] }) {
   );
 }
 
+/** A specific recorded result the organizer has asked to remove. */
+interface Removal {
+  player: Player;
+  resultId: string;
+  outcome: Outcome;
+}
+
 /** Asks before recording a result, so a stray tap on +W or +L doesn't count. */
-function ConfirmResult({ pending, onClose }: { pending: { player: Player; outcome: Outcome } | null; onClose: () => void }) {
+function ConfirmResult({
+  pending,
+  onClose,
+  onUndo,
+}: {
+  pending: { player: Player; outcome: Outcome } | null;
+  onClose: () => void;
+  onUndo: (removal: Removal) => void;
+}) {
   const { records, run, addResultOptimistic } = useEventData();
   const toast = useToast();
   if (!pending) return <Dialog open={false} onClose={onClose} title="" children={null} />;
@@ -211,11 +277,17 @@ function ConfirmResult({ pending, onClose }: { pending: { player: Player; outcom
 
   const confirm = async () => {
     onClose();
-    addResultOptimistic({ id: `pending-${crypto.randomUUID()}`, playerId: player.id, outcome, createdAt: new Date().toISOString() });
+    addResultOptimistic({
+      id: `pending-${crypto.randomUUID()}`,
+      playerId: player.id,
+      outcome,
+      createdAt: new Date().toISOString(),
+      simulated: false,
+    });
     const saved = await run(['results'], (repo) => repo.addResult(player.id, outcome));
     if (saved) {
       toast.show(`${player.name} ${won ? 'won' : 'lost'}: now ${after}`, {
-        action: { label: 'Undo', onClick: () => void run(['results'], (repo) => repo.deleteResult(saved.id)) },
+        action: { label: 'Undo', onClick: () => onUndo({ player, resultId: saved.id, outcome }) },
       });
     }
   };
@@ -237,8 +309,53 @@ function ConfirmResult({ pending, onClose }: { pending: { player: Player; outcom
   );
 }
 
-function RecordSheet({ player, onClose }: { player: Player | null; onClose: () => void }) {
-  const { data, records, run } = useEventData();
+/** Asks before removing a result, whether from the results sheet or the toast's Undo. */
+function ConfirmRemoval({ removal, onClose }: { removal: Removal | null; onClose: () => void }) {
+  const { records, run } = useEventData();
+  const toast = useToast();
+  if (!removal) return <Dialog open={false} onClose={onClose} title="" children={null} />;
+
+  const { player, resultId, outcome } = removal;
+  const isWin = outcome === 'W';
+  const r = recordOf(records, player.id);
+  const after = isWin ? `${Math.max(r.wins - 1, 0)}–${r.losses}` : `${r.wins}–${Math.max(r.losses - 1, 0)}`;
+
+  const confirm = async () => {
+    onClose();
+    const ok = await run(['results'], async (repo) => {
+      await repo.deleteResult(resultId);
+      return true;
+    });
+    if (ok) toast.show(`Removed a ${isWin ? 'win' : 'loss'} from ${player.name}: now ${after}`);
+  };
+
+  return (
+    <Dialog open onClose={onClose} title={`Remove a ${isWin ? 'win' : 'loss'} from ${player.name}?`}>
+      <p className="dialog__text">
+        This takes {player.name}’s record from {formatRecord(r)} to {after}.
+      </p>
+      <div className="dialog__actions">
+        <button type="button" className="btn btn--quiet" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="button" className="btn btn--danger" onClick={() => void confirm()}>
+          {isWin ? 'Remove win' : 'Remove loss'}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+function RecordSheet({
+  player,
+  onClose,
+  onRemove,
+}: {
+  player: Player | null;
+  onClose: () => void;
+  onRemove: (removal: Removal) => void;
+}) {
+  const { data, records } = useEventData();
   if (!player) return <Dialog open={false} onClose={onClose} title="" children={null} />;
   const r = recordOf(records, player.id);
 
@@ -246,7 +363,7 @@ function RecordSheet({ player, onClose }: { player: Player | null; onClose: () =
     const latest = data!.results
       .filter((x) => x.playerId === player.id && x.outcome === outcome && !x.id.startsWith('pending-'))
       .at(-1);
-    if (latest) void run(['results'], (repo) => repo.deleteResult(latest.id));
+    if (latest) onRemove({ player, resultId: latest.id, outcome });
   };
 
   return (

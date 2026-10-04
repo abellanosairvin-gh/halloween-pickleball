@@ -37,6 +37,7 @@ const toResult = (r: Row): GameResult => ({
   playerId: r.player_id as string,
   outcome: r.outcome as Outcome,
   createdAt: r.created_at as string,
+  simulated: Boolean(r.simulated),
 });
 
 const toPair = (r: Row): BracketPair => ({
@@ -79,7 +80,7 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
           toPlayer,
         ) as Snapshot[T];
       case 'results':
-        return unwrap(await db.from('results').select('id, player_id, outcome, created_at').order('created_at')).map(
+        return unwrap(await db.from('results').select('id, player_id, outcome, created_at, simulated').order('created_at')).map(
           toResult,
         ) as Snapshot[T];
       case 'pairs':
@@ -152,13 +153,28 @@ export function createSupabaseRepo(db: SupabaseClient): Repo {
 
     async addResult(playerId, outcome) {
       const row = unwrap(
-        await db.from('results').insert({ player_id: playerId, outcome }).select('id, player_id, outcome, created_at').single(),
+        await db.from('results').insert({ player_id: playerId, outcome }).select('id, player_id, outcome, created_at, simulated').single(),
       );
       return toResult(row as unknown as Row);
     },
 
     async deleteResult(resultId) {
       unwrap(await db.from('results').delete().eq('id', resultId));
+    },
+
+    async addSimulatedResults(entries) {
+      if (entries.length === 0) return 0;
+      unwrap(
+        await db
+          .from('results')
+          .insert(entries.map((e) => ({ player_id: e.playerId, outcome: e.outcome, simulated: true }))),
+      );
+      return entries.length;
+    },
+
+    async clearSimulatedResults() {
+      const rows = unwrap(await db.from('results').delete().eq('simulated', true).select('id'));
+      return (rows as unknown[]).length;
     },
 
     async setBracketPairs(gender, pairs) {

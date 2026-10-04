@@ -338,6 +338,12 @@ a {
   color: var(--ink-soft);
 }
 
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .page-meta strong {
   color: var(--ink);
 }
@@ -1052,14 +1058,57 @@ a {
   gap: 20px;
 }
 
+@media (min-width: 760px) {
+  .team-grid {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
 @media (min-width: 1000px) {
   .jump {
     display: none;
   }
+}
+
+/* All four teams side by side. The page widens so each pane keeps room for names. */
+@media (min-width: 1200px) {
+  /* Header, tabs and page all read --max-width, so they widen together. */
+  :root:has(.team-grid) {
+    --max-width: 1480px;
+  }
 
   .team-grid {
-    grid-template-columns: 1fr 1fr;
-    align-items: start;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .team__head {
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .team__crest {
+    width: 34px;
+    height: 34px;
+  }
+
+  .team-grid .member {
+    gap: 6px;
+    padding: 6px 8px 6px 12px;
+  }
+
+  .team-grid .member__record {
+    min-width: 44px;
+    padding: 2px 2px;
+  }
+
+  .team-grid .tally {
+    width: 40px;
+  }
+
+  .team__group-title {
+    padding-left: 12px;
   }
 }
 
@@ -1157,35 +1206,21 @@ a {
   overflow-wrap: anywhere;
 }
 
-.member__tags {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--ink-soft);
-  font-size: var(--step--1);
-}
 
 .member__line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 8px;
+  display: grid;
+  justify-items: start;
+  gap: 3px;
   min-width: 0;
 }
 
-.member__line .member__name {
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
-/* Match history: one bar per game in the order played, beside the name.
-   It stays on the name's line when about 7 bars fit (the 48px basis) and drops below it otherwise.
-   Content-sized when short; when it doesn't fit, flex-end alignment overflows
+/* Match history: one bar per game in the order played, under the name.
+   Content-sized when short; when wider than the row, flex-end alignment overflows
    (and clips) the oldest bars on the left, keeping the latest games visible. */
 .history {
   display: flex;
-  flex: 1 1 48px;
-  max-width: max-content;
+  width: max-content;
+  max-width: 100%;
   justify-content: flex-end;
   align-items: center;
   gap: 2px;
@@ -1208,13 +1243,6 @@ a {
   background: var(--loss);
 }
 
-.member__pair {
-  padding: 0 8px;
-  border: 1.5px solid currentColor;
-  border-radius: var(--radius-pill);
-  color: var(--ink);
-  font-weight: 700;
-}
 
 .member__record {
   display: grid;
@@ -1252,12 +1280,15 @@ a {
 }
 
 .tally--w {
-  background: var(--ink);
-  color: var(--surface);
+  border-color: var(--win);
+  background: var(--win);
+  color: var(--on-result);
 }
 
 .tally--l {
-  background: transparent;
+  border-color: var(--loss);
+  background: var(--loss);
+  color: var(--on-result);
 }
 
 .tally:active {

@@ -1,10 +1,14 @@
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { TEAM_IDS } from '../src/domain/teams';
 import { bucketSpreads, seededRandom, shuffled } from './fixtures';
 
-const migration = readFileSync('supabase/migrations/0001_init.sql', 'utf8');
+// Every migration, applied in file-name order, the same way Supabase applies them.
+const migrations = readdirSync('supabase/migrations')
+  .filter((f) => f.endsWith('.sql'))
+  .sort()
+  .map((f) => readFileSync(`supabase/migrations/${f}`, 'utf8'));
 const seed = readFileSync('supabase/seed.sql', 'utf8');
 
 type PlayerRow = { id: string; name: string; gender: string; skill: string; team_id: string | null };
@@ -15,7 +19,7 @@ beforeEach(async () => {
   db = new PGlite();
   // Roles that exist in every Supabase project.
   await db.exec('create role anon; create role authenticated;');
-  await db.exec(migration);
+  for (const sql of migrations) await db.exec(sql);
   await db.exec(seed);
 });
 
@@ -197,5 +201,18 @@ describe('editing the roster', () => {
     await db.query(`select reset_bracket('F')`);
     await db.query('update players set team_id = $2 where id = $1', [locked, otherTeam]);
     await db.query('delete from players where id = $1', [locked]);
+  });
+});
+
+describe('simulated results', () => {
+  it('are flagged, count toward stats, and clear without touching hand-entered results', async () => {
+    const [p] = await players();
+    await db.query(`insert into results (player_id, outcome) values ($1, 'W')`, [p.id]);
+    await db.query(`insert into results (player_id, outcome, simulated) values ($1, 'L', true), ($1, 'L', true)`, [p.id]);
+    const stats = async () =>
+      (await db.query<{ games: number }>('select games::int from player_stats where player_id = $1', [p.id])).rows[0].games;
+    expect(await stats()).toBe(3);
+    await db.query('delete from results where simulated');
+    expect(await stats()).toBe(1);
   });
 });

@@ -48,11 +48,13 @@ interface ConfirmProps {
   title: string;
   message: ReactNode;
   confirmLabel: string;
+  /** 'danger' (default) for destructive actions, 'primary' for ones that only add. */
+  tone?: 'danger' | 'primary';
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export function ConfirmDialog({ open, title, message, confirmLabel, onConfirm, onCancel }: ConfirmProps) {
+export function ConfirmDialog({ open, title, message, confirmLabel, tone = 'danger', onConfirm, onCancel }: ConfirmProps) {
   return (
     <Dialog open={open} onClose={onCancel} title={title}>
       <p className="dialog__text">{message}</p>
@@ -62,7 +64,7 @@ export function ConfirmDialog({ open, title, message, confirmLabel, onConfirm, o
         </button>
         <button
           type="button"
-          className="btn btn--danger"
+          className={`btn btn--${tone}`}
           onClick={() => {
             onConfirm();
             onCancel();

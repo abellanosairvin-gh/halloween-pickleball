@@ -69,6 +69,7 @@ export function createLocalRepo(): Repo {
     if (memory) return memory;
     const raw = safeGet(STORE_KEY);
     memory = raw ? (JSON.parse(raw) as Snapshot) : seedSnapshot();
+    memory.results = memory.results.map((r) => ({ ...r, simulated: r.simulated ?? false }));
     return memory;
   }
 
@@ -162,7 +163,7 @@ export function createLocalRepo(): Repo {
 
     async addResult(playerId, outcome) {
       const s = clone();
-      const result = { id: crypto.randomUUID(), playerId, outcome, createdAt: new Date().toISOString() };
+      const result = { id: crypto.randomUUID(), playerId, outcome, createdAt: new Date().toISOString(), simulated: false };
       s.results.push(result);
       write(s, ['results']);
       return result;
@@ -172,6 +173,22 @@ export function createLocalRepo(): Repo {
       const s = clone();
       s.results = s.results.filter((r) => r.id !== resultId);
       write(s, ['results']);
+    },
+
+    async addSimulatedResults(entries) {
+      const s = clone();
+      const createdAt = new Date().toISOString();
+      s.results.push(...entries.map((e) => ({ id: crypto.randomUUID(), ...e, createdAt, simulated: true })));
+      write(s, ['results']);
+      return entries.length;
+    },
+
+    async clearSimulatedResults() {
+      const s = clone();
+      const before = s.results.length;
+      s.results = s.results.filter((r) => !r.simulated);
+      write(s, ['results']);
+      return before - s.results.length;
     },
 
     async setBracketPairs(gender, pairs) {
