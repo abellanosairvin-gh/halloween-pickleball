@@ -7,6 +7,7 @@ import { PartyShell } from './components/PartyShell';
 import { ToastProvider } from './components/Toast';
 import { EventDataProvider } from './data/EventData';
 import { PlayersPage } from './pages/PlayersPage';
+import { QrPage } from './pages/QrPage';
 import { TeamsPage } from './pages/TeamsPage';
 import { TournamentPage } from './pages/TournamentPage';
 
@@ -17,6 +18,8 @@ export function App() {
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            {/* The QR code on its own page, for a big screen. Opened in a new tab from the header. */}
+            <Route path="/qr" element={<QrPage />} />
 
             {/* Public party page, reached from the QR code. No sign-in. */}
             <Route

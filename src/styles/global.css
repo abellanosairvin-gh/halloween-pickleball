@@ -984,46 +984,48 @@ a {
   height: 100%;
 }
 
-.qr--dialog {
-  width: min(240px, 62vw);
-  border-radius: 10px;
+.qr--page {
+  width: min(440px, 78vw, 46vh);
+  border-radius: 12px;
 }
 
-/* QR dialog: a Halloween night sheet trimmed in the four team colours. */
-.dialog--qr {
+/* QR page: a Halloween night poster trimmed in the four team colours, made for a big screen. */
+.qr-page {
   --sheet-trim: linear-gradient(90deg, var(--pumpkin) 0 25%, var(--witch) 25% 50%, var(--skull) 50% 75%, var(--bat) 75%);
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 14px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 32px 16px 24px;
   background:
-    var(--sheet-trim) top / 100% 8px no-repeat,
+    var(--sheet-trim) top / 100% 10px no-repeat,
     radial-gradient(120% 70% at 50% 0%, rgb(240 102 26 / 0.22), transparent 60%),
     var(--court);
   color: var(--court-line);
   color-scheme: dark;
-}
-
-.dialog--qr .dialog__body {
-  justify-items: center;
-  padding-top: 30px;
   text-align: center;
 }
 
-.dialog--qr .dialog__title {
-  max-width: 16ch;
+.qr-page__title {
+  max-width: 24ch;
   font-family: var(--font-display);
-  font-size: var(--step-3);
+  font-size: clamp(2.25rem, 6vw, 4rem);
   line-height: 0.95;
   text-wrap: balance;
 }
 
 .qr-sheet__crests {
   display: flex;
-  gap: 10px;
+  gap: 12px;
 }
 
 .qr-sheet__crest {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   background: var(--team);
   color: var(--on-team);
@@ -1032,15 +1034,15 @@ a {
 
 /* The QR sits on white (what phone cameras read best) inside a frame of the four team colours. */
 .qr-sheet__frame {
-  padding: 8px;
-  border-radius: 16px;
+  padding: 10px;
+  border-radius: 18px;
   background: conic-gradient(from -45deg, var(--pumpkin) 0 25%, var(--witch) 0 50%, var(--skull) 0 75%, #1b1724 0);
   box-shadow: 0 0 0 1.5px rgb(244 241 248 / 0.55), 0 10px 40px rgb(240 102 26 / 0.25);
 }
 
 .qr-sheet__lede {
   max-width: 22ch;
-  font-size: var(--step-1);
+  font-size: clamp(var(--step-1), 3vw, var(--step-2));
   font-weight: 800;
   line-height: 1.2;
 }
@@ -1048,24 +1050,16 @@ a {
 .qr-sheet__sub {
   max-width: 34ch;
   color: rgb(244 241 248 / 0.78);
+  font-size: clamp(var(--step-0), 2vw, var(--step-1));
 }
 
 .qr-sheet__warning {
+  max-width: 46ch;
   padding: 8px 12px;
   border-radius: var(--radius-control);
   background: rgb(200 55 45 / 0.25);
   font-size: var(--step--1);
   font-weight: 600;
-}
-
-.dialog--qr .dialog__actions {
-  justify-self: stretch;
-}
-
-.qr-sheet__close {
-  border-color: rgb(244 241 248 / 0.6);
-  background: transparent;
-  color: var(--court-line);
 }
 
 /* Check-in reveal: the one big moment ---------------------------------------------------- */
@@ -1343,13 +1337,13 @@ a {
   }
 
   .podium__place:first-child .podium__crest {
-    width: 56px;
-    height: 56px;
+    width: 88px;
+    height: 88px;
   }
 
   .podium__crest {
-    width: 40px;
-    height: 40px;
+    width: 68px;
+    height: 68px;
   }
 
   .podium__team {

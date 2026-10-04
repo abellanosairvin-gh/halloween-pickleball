@@ -54,11 +54,11 @@ Covers team balancing for any arrival order, standings and tie-breaks, qualifier
 
 ## Party page and QR code
 
-Guests don't need an account. The **QR code** button in the organizer header shows a Halloween-themed code for `/party` to hold up for guests to scan. The party page has three tabs:
+Guests don't need an account. The **QR code** button in the organizer header opens a Halloween-themed code for `/party` in a new tab (`/qr`), ready to put on a big screen for guests to scan. The party page has three tabs:
 
 - **Check in** – guests find their name, confirm "Check in as …?", and see their team reveal. Their phone remembers them and shows "Irene, you're on Witch" on every tab.
 - **Teams** and **Tournament** – the live standings and brackets, read-only.
 
-The QR code uses the address the organizer has open, so open the organizer screens on the deployed site before showing it. Set `VITE_PUBLIC_URL` if you use a custom domain or want the code to always point at one address. The QR dialog warns you if the link would point at `localhost`.
+The QR code uses the address the organizer has open, so open the organizer screens on the deployed site before showing it. Set `VITE_PUBLIC_URL` if you use a custom domain or want the code to always point at one address. The QR page warns you if the link would point at `localhost`.
 
 Guests can read players, results and brackets, and the only change they can make is checking in. Everything else needs the organizer session, which `tests/api.test.ts` checks.

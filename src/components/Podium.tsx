@@ -33,7 +33,7 @@ export function Podium({ places, label }: { places: (PodiumPlace | null)[]; labe
         }
         const who = (
           <>
-            <TeamCrest team={place.teamId} size={i === 0 ? 40 : 30} className="podium__crest" />
+            <TeamCrest team={place.teamId} size={i === 0 ? 60 : 46} className="podium__crest" />
             <span className="podium__title">{place.title}</span>
             {place.detail && <span className="podium__detail">{place.detail}</span>}
           </>
