@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { useAccess } from '../auth/Access';
 import { ConfirmDialog, Dialog } from '../components/Dialog';
 import { EditIcon } from '../components/EditIcon';
-import { Podium } from '../components/Podium';
 import { TeamCrest } from '../components/TeamCrest';
 import { useToast } from '../components/Toast';
 import { useEventData } from '../data/EventData';
@@ -21,6 +20,8 @@ import {
 import { SIMULATED_GAMES, simulatedResults } from '../domain/simulate';
 import { GENDER_LABEL, TEAMS, teamName } from '../domain/teams';
 import type { Gender, Outcome, Player, TeamId } from '../domain/types';
+
+const ORDINAL = ['1st', '2nd', '3rd', '4th'];
 
 /** Most recent results rendered in the history strip; narrow screens clip the oldest of these. */
 const HISTORY_SHOWN = 30;
@@ -89,22 +90,24 @@ export function TeamsPage() {
         )}
       </header>
 
-      {anyGames && (
-        <Podium
-          label="Team standings by win rate"
-          places={standings.map((s) => ({
-            teamId: s.teamId,
-            href: `#team-${s.teamId}`,
-            title: <span className="podium__team">{teamName(s.teamId)}</span>,
-            detail: (
-              <>
-                <span className="podium__rate">{formatRate(s.record.rate)}</span>
-                <span className="podium__record">{formatRecord(s.record)}</span>
-              </>
-            ),
-          }))}
-        />
-      )}
+      <ol className="standings" aria-label="Team standings by win rate">
+        {standings.map((s, i) => (
+          <li key={s.teamId} className={`standings__row team-${s.teamId} ${i === 0 && anyGames ? 'is-leader' : ''}`}>
+            <a className="standings__link" href={`#team-${s.teamId}`}>
+              <span className="standings__rank">{anyGames ? ORDINAL[i] : '–'}</span>
+              <TeamCrest team={s.teamId} size={40} className="standings__crest" />
+              <span className="standings__name">{teamName(s.teamId)}</span>
+              <span className="standings__bar" aria-hidden="true">
+                <span className="standings__fill" style={{ inlineSize: `${(s.record.rate ?? 0) * 100}%` }} />
+              </span>
+              <span className="standings__score">
+                <span className="standings__rate">{formatRate(s.record.rate)}</span>
+                <span className="standings__record">{formatRecord(s.record)}</span>
+              </span>
+            </a>
+          </li>
+        ))}
+      </ol>
 
       <nav className="jump" aria-label="Jump to team">
         {TEAMS.map((t) => (

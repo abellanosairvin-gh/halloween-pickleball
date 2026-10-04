@@ -1212,7 +1212,131 @@ a {
 
 /* Teams ------------------------------------------------------------------------------- */
 
-/* Podium: 1st to 4th, used for team standings and each bracket's final placings. */
+/* Teams tab standings: 1st to 4th, each with a bar filled to the team's win rate. */
+.standings {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 24px;
+  padding: 10px;
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+
+.standings__link {
+  display: grid;
+  /* A fixed score column keeps every bar the same length, so the fills compare directly. */
+  grid-template-columns: 2.6em auto minmax(0, 1fr) 5.25rem;
+  grid-template-areas:
+    'rank crest name score'
+    'rank crest bar score';
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 6px;
+  padding: 10px 12px 10px 8px;
+  border-radius: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.standings__link:hover {
+  background: color-mix(in srgb, var(--team) 8%, var(--surface));
+}
+
+.standings__rank {
+  grid-area: rank;
+  font-family: var(--font-display);
+  font-size: var(--step-1);
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+}
+
+.standings__crest {
+  grid-area: crest;
+}
+
+.standings__name {
+  grid-area: name;
+  font-family: var(--font-display);
+  font-size: var(--step-1);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.standings__bar {
+  grid-area: bar;
+  height: 12px;
+  border-radius: var(--radius-pill);
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.standings__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--team);
+  box-shadow: inset 0 0 0 1px var(--team-edge);
+  transition: inline-size 400ms ease-out;
+}
+
+.standings__score {
+  grid-area: score;
+  display: grid;
+  justify-items: end;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.standings__rate {
+  font-size: var(--step-1);
+  font-weight: 800;
+}
+
+.standings__record {
+  color: var(--ink-soft);
+  font-size: var(--step--1);
+}
+
+.standings__row.is-leader .standings__link {
+  background: color-mix(in srgb, var(--team) 12%, var(--surface));
+}
+
+.standings__row.is-leader .standings__rank,
+.standings__row.is-leader .standings__name,
+.standings__row.is-leader .standings__rate {
+  font-size: var(--step-2);
+}
+
+@media (min-width: 760px) {
+  .standings__link {
+    grid-template-columns: 3.2em auto minmax(0, 1fr) 7rem;
+    column-gap: 16px;
+  }
+
+  .standings__crest {
+    width: 52px;
+    height: 52px;
+  }
+
+  .standings__rank,
+  .standings__name,
+  .standings__rate {
+    font-size: var(--step-2);
+  }
+
+  .standings__bar {
+    height: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .standings__fill {
+    transition: none;
+  }
+}
+
+/* Podium: 1st to 4th, used for each bracket's final placings. */
 .podium {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1273,12 +1397,6 @@ a {
   overflow-wrap: anywhere;
 }
 
-.podium__team {
-  font-family: var(--font-display);
-  font-size: var(--step-1);
-  line-height: 1;
-}
-
 .podium__names {
   display: grid;
 }
@@ -1289,12 +1407,6 @@ a {
   font-size: var(--step--1);
   font-variant-numeric: tabular-nums;
   line-height: 1.25;
-}
-
-.podium__rate {
-  color: var(--ink);
-  font-size: var(--step-0);
-  font-weight: 800;
 }
 
 .podium__step {
@@ -1344,14 +1456,6 @@ a {
   .podium__crest {
     width: 68px;
     height: 68px;
-  }
-
-  .podium__team {
-    font-size: var(--step-2);
-  }
-
-  .podium__rate {
-    font-size: var(--step-1);
   }
 
   .podium__place[data-rank='1'] .podium__step {
