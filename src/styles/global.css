@@ -1166,10 +1166,31 @@ a {
 }
 
 .reveal__face--front {
+  container-type: inline-size;
   transform: rotateY(180deg);
   background: var(--team);
   color: var(--on-team);
   box-shadow: inset 0 0 0 2px var(--team-edge);
+}
+
+/* Transparent cartoon artwork (set per team by CheckInReveal) frames the crest and message on the solid team colour. */
+.reveal__face--front::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 17px;
+  background: var(--reveal-frame) center / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+.reveal__face--front > * {
+  position: relative;
+}
+
+/* Crest and team name shrink with the card on narrow phones so they stay clear of the frame's corners. */
+.reveal__crest {
+  width: min(120px, 43cqi);
+  height: auto;
 }
 
 .reveal__name {
@@ -1190,7 +1211,7 @@ a {
 
 .reveal__team {
   font-family: var(--font-display);
-  font-size: 4.5rem;
+  font-size: min(4.5rem, 26cqi);
   font-weight: 800;
   line-height: 0.9;
 }

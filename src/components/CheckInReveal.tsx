@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type CSSProperties } from 'react';
 import { teamName } from '../domain/teams';
 import type { TeamId } from '../domain/types';
 import { TeamCrest } from './TeamCrest';
@@ -9,6 +9,14 @@ export interface Reveal {
   team: TeamId | null;
 }
 
+/** Cartoon frame drawn around each team's side of the card. */
+const FRAMES: Record<TeamId, string> = {
+  pumpkin: '/images/reveal/pumpkin-frame.webp',
+  witch: '/images/reveal/witch-frame.webp',
+  skull: '/images/reveal/skull-frame.webp',
+  bat: '/images/reveal/dracula-frame.webp',
+};
+
 /** Long enough for the spins (2.4s) and a couple of seconds to read the team. */
 const SHOW_FOR_MS = 4600;
 
@@ -18,6 +26,11 @@ const SHOW_FOR_MS = 4600;
  */
 export function CheckInReveal({ reveal, onDone }: { reveal: Reveal | null; onDone: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
+
+  // Fetch every frame up front: the team side only appears once the server picks a team, too late to download during the spin.
+  useEffect(() => {
+    for (const src of Object.values(FRAMES)) new Image().src = src;
+  }, []);
 
   useEffect(() => {
     const el = ref.current;
@@ -48,7 +61,11 @@ export function CheckInReveal({ reveal, onDone }: { reveal: Reveal | null; onDon
             <span className="reveal__hint">Choosing a team…</span>
           </div>
           {reveal.team && (
-            <div className={`reveal__face reveal__face--front team-${reveal.team}`} role="status">
+            <div
+              className={`reveal__face reveal__face--front team-${reveal.team}`}
+              style={{ '--reveal-frame': `url('${FRAMES[reveal.team]}')` } as CSSProperties}
+              role="status"
+            >
               <TeamCrest team={reveal.team} size={120} className="reveal__crest" />
               <span className="reveal__joins">{reveal.playerName} joins</span>
               <span className="reveal__team">{teamName(reveal.team)}</span>

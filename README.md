@@ -63,4 +63,6 @@ The QR code uses the address the organizer has open, so open the organizer scree
 
 The `/qr` page uses the cursed-manor artwork in `public/images/qr-cursed-manor.webp`. A live QR code, black on parchment, covers the illustration's sample QR and links to `/party`; the image's QR is never used for check-in. The full poster fits the screen without scrolling, including the local-link warning. If you replace the artwork, update the doorway percentages in `src/styles/global.css` to keep the real QR aligned.
 
+The check-in reveal frames each team's side of the card with artwork from `public/images/reveal/` (3:4, transparent in the middle), listed in `src/components/CheckInReveal.tsx`.
+
 Guests can read players, results and brackets, and the only change they can make is checking in. Everything else needs the organizer session, which `tests/api.test.ts` checks.
