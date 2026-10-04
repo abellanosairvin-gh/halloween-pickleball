@@ -17,8 +17,14 @@ let db: PGlite;
 
 beforeEach(async () => {
   db = new PGlite();
-  // Roles that exist in every Supabase project.
-  await db.exec('create role anon; create role authenticated;');
+  // Roles and default grants that exist in every Supabase project; the migrations' revokes and
+  // row-level security are what actually restrict them.
+  await db.exec(`
+    create role anon; create role authenticated;
+    grant usage on schema public to anon, authenticated;
+    alter default privileges in schema public grant all on tables to anon, authenticated;
+    alter default privileges in schema public grant all on functions to anon, authenticated;
+  `);
   for (const sql of migrations) await db.exec(sql);
   await db.exec(seed);
 });
@@ -214,5 +220,61 @@ describe('simulated results', () => {
     expect(await stats()).toBe(3);
     await db.query('delete from results where simulated');
     expect(await stats()).toBe(1);
+  });
+});
+
+describe('anonymous visitors (party page)', () => {
+  const asAnon = async <T,>(fn: () => Promise<T>) => {
+    await db.exec('set role anon');
+    try {
+      return await fn();
+    } finally {
+      await db.exec('reset role');
+    }
+  };
+
+  beforeEach(async () => {
+    const all = await players();
+    for (const p of all) await checkIn(p.id);
+    await recordGames(all[0].id, 3);
+  });
+
+  it('can read everything the party page shows', async () => {
+    await asAnon(async () => {
+      expect((await db.query('select id, name, gender, team_id from players')).rows).toHaveLength(40);
+      expect((await db.query('select player_id, outcome from results')).rows).toHaveLength(3);
+      expect((await db.query('select * from teams')).rows).toHaveLength(4);
+      await db.query('select * from bracket_pairs');
+      await db.query('select * from bracket_matches');
+      await db.query('select * from player_stats');
+    });
+  });
+
+  it('can check themselves in', async () => {
+    const [p] = await players();
+    await db.query('update players set team_id = null, checked_in_at = null where id = $1', [p.id]);
+    const team = await asAnon(() => checkIn(p.id));
+    expect(TEAM_IDS).toContain(team);
+  });
+
+  it('cannot change anything else', async () => {
+    const [p] = await players();
+    const attempts = [
+      ["insert into results (player_id, outcome) values ($1, 'W')", [p.id]],
+      ['delete from results', []],
+      ["update players set team_id = 'bat' where id = $1", [p.id]],
+      ['update players set team_id = null, checked_in_at = null where id = $1', [p.id]],
+      ["insert into players (name, gender, skill) values ('Intruder', 'M', 'A')", []],
+      ['delete from players where id = $1', [p.id]],
+      ["select set_bracket_pairs('F', '[]'::jsonb)", []],
+      ["select set_match_winner('F', 'semi1', 0::smallint)", []],
+      ["select reset_bracket('F')", []],
+    ] as const;
+    for (const [sql, params] of attempts) {
+      await expect(asAnon(() => db.query(sql, [...params])), sql).rejects.toThrow(/permission denied/);
+    }
+    const after = await players();
+    expect(after.find((x) => x.id === p.id)?.team_id).not.toBeNull();
+    expect((await db.query('select 1 from results')).rows).toHaveLength(3);
   });
 });

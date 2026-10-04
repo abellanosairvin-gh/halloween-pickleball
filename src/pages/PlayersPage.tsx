@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useAccess } from '../auth/Access';
 import { CheckInReveal, type Reveal } from '../components/CheckInReveal';
 import { Dialog } from '../components/Dialog';
 import { PlayerForm } from '../components/PlayerForm';
@@ -14,6 +15,7 @@ const timeFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute:
 
 export function PlayersPage() {
   const { data, run } = useEventData();
+  const { canEdit, setMe, meId } = useAccess();
   const players = data!.players;
   const [query, setQuery] = useState('');
   const [onlyWaiting, setOnlyWaiting] = useState(false);
@@ -22,6 +24,8 @@ export function PlayersPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [formTarget, setFormTarget] = useState<Player | 'new' | null>(null);
+  /** Party page only: the name a guest tapped, waiting for "Check me in". */
+  const [confirmSelf, setConfirmSelf] = useState<Player | null>(null);
 
   const checkedIn = players.filter((p) => p.checkedInAt).length;
 
@@ -38,6 +42,7 @@ export function PlayersPage() {
     const team = await run(['players'], (r) => r.checkIn(p.id));
     setBusyId(null);
     setReveal(team ? { playerName: p.name, team } : null);
+    if (team && !canEdit) setMe(p.id);
   };
 
   const closeReveal = useCallback(() => setReveal(null), []);
@@ -46,23 +51,25 @@ export function PlayersPage() {
   return (
     <>
       <header className="page-head">
-        <h1 className="page-title">Players</h1>
+        <h1 className="page-title">{canEdit ? 'Players' : 'Check in'}</h1>
         <p className="page-meta">
           <strong>{checkedIn}</strong> of {players.length} checked in.{' '}
-          {editMode
-            ? 'Tap a player to change their details or delete them.'
-            : 'Tap a name to check them in, or tap a checked-in player to change their team.'}
+          {!canEdit
+            ? 'Find your name and tap it. You’ll be put on a team right away.'
+            : editMode
+              ? 'Tap a player to change their details or delete them.'
+              : 'Tap a name to check them in, or tap a checked-in player to change their team.'}
         </p>
         <ArrivalRoll players={players} />
       </header>
 
       <div className="toolbar">
         <label className="search">
-          <span className="visually-hidden">Find a player</span>
+          <span className="visually-hidden">{canEdit ? 'Find a player' : 'Find your name'}</span>
           <input
             className="input"
             type="search"
-            placeholder="Find a player"
+            placeholder={canEdit ? 'Find a player' : 'Find your name'}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -71,6 +78,7 @@ export function PlayersPage() {
           <input type="checkbox" checked={onlyWaiting} onChange={(e) => setOnlyWaiting(e.target.checked)} />
           <span>Not checked in</span>
         </label>
+        {canEdit && (
         <div className="toolbar__actions">
           {editMode && (
             <button type="button" className="btn btn--primary btn--small" onClick={() => setFormTarget('new')}>
@@ -86,6 +94,7 @@ export function PlayersPage() {
             {editMode ? 'Done editing' : 'Edit list'}
           </button>
         </div>
+        )}
       </div>
 
       <div className={`roster-columns ${editMode ? 'is-editing' : ''}`}>
@@ -103,7 +112,7 @@ export function PlayersPage() {
               {group.length === 0 ? (
                 <p className="roster__empty">
                   {all.length === 0
-                    ? `No ${GENDER_LABEL[gender].toLowerCase()} on the list yet. Use Edit list to add players.`
+                    ? `No ${GENDER_LABEL[gender].toLowerCase()} on the list yet.${canEdit ? ' Use Edit list to add players.' : ''}`
                     : onlyWaiting && !query
                       ? `All ${GENDER_LABEL[gender].toLowerCase()} are checked in.`
                       : 'No names match.'}
@@ -128,6 +137,17 @@ export function PlayersPage() {
                             <span className="roster__edit-label">Edit</span>
                           </span>
                         </button>
+                      ) : p.checkedInAt && p.teamId && !canEdit ? (
+                        <div className={`roster__row roster__row--plain is-in ${p.id === meId ? 'is-me' : ''}`}>
+                          <span className="roster__name">
+                            {p.name}
+                            {p.id === meId && <span className="visually-hidden"> (you)</span>}
+                          </span>
+                          <span className={`roster__team team-${p.teamId}`}>
+                            <TeamCrest team={p.teamId} size={16} />
+                            <span className="roster__team-name">{teamName(p.teamId)}</span>
+                          </span>
+                        </div>
                       ) : p.checkedInAt && p.teamId ? (
                         <button
                           type="button"
@@ -145,12 +165,12 @@ export function PlayersPage() {
                       ) : (
                         <button
                           type="button"
-                          className="roster__row"
+                          className={`roster__row ${canEdit ? '' : 'roster__row--plain'}`}
                           disabled={busyId !== null}
-                          onClick={() => void checkIn(p)}
+                          onClick={() => (canEdit ? void checkIn(p) : setConfirmSelf(p))}
                           aria-label={`Check in ${p.name}`}
                         >
-                          <SkillMark skill={p.skill} />
+                          {canEdit && <SkillMark skill={p.skill} />}
                           <span className="roster__name">{p.name}</span>
                           <span className="roster__checkin" aria-hidden="true">
                             <span className="roster__checkin-label">Check in</span>
@@ -167,6 +187,27 @@ export function PlayersPage() {
       </div>
 
       <CheckInReveal reveal={reveal} onDone={closeReveal} />
+      <Dialog open={confirmSelf !== null} onClose={() => setConfirmSelf(null)} title={`Check in as ${confirmSelf?.name ?? ''}?`}>
+        <p className="dialog__text">
+          You’ll be put on a team right away. If this isn’t you, tap Cancel and find your own name.
+        </p>
+        <div className="dialog__actions">
+          <button type="button" className="btn btn--quiet" onClick={() => setConfirmSelf(null)}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => {
+              const p = confirmSelf;
+              setConfirmSelf(null);
+              if (p) void checkIn(p);
+            }}
+          >
+            Check me in
+          </button>
+        </div>
+      </Dialog>
       <PlayerSheet
         player={selected}
         onClose={() => setSelectedId(null)}

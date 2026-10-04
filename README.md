@@ -22,7 +22,7 @@ Without Supabase settings the app runs in **demo mode**: data is kept in this br
 ## Connect Supabase
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. In the SQL editor, run each file in `supabase/migrations` in order (`0001_init.sql`, then `0002_simulated_results.sql`), then `supabase/seed.sql`. If you already ran `0001`, just run the newer files.
+2. In the SQL editor, run each file in `supabase/migrations` in order (`0001_init.sql`, then `0002_simulated_results.sql`, then `0003_party_page.sql`), then `supabase/seed.sql`. If you already ran `0001`, just run the newer files.
 3. Under **Authentication → Users**, add the organizer (email and password). Turn off public sign-ups under **Authentication → Providers → Email** so nobody else can create an account.
 4. Copy `.env.example` to `.env` and fill in the project URL and anon key from **Project Settings → API**.
 5. `npm run dev`, then sign in as the organizer.
@@ -45,6 +45,13 @@ npm test
 
 Covers team balancing for any arrival order, standings and tie-breaks, qualifiers, the random draw and bracket progression. It also runs the real SQL migration in an in-memory Postgres (PGlite) to check `check_in_player` and the bracket functions.
 
-## Coming next: QR check-in
+## Party page and QR code
 
-The database is ready for it. Anonymous visitors can read player names and call `check_in_player`, and nothing else. A public `/checkin` page can list names, call the function, and reuse `CheckInReveal`.
+Guests don't need an account. The **QR code** button in the organizer header shows a code for `/party`, with options to copy the link or print a poster (`/qr`). The party page has three tabs:
+
+- **Check in** – guests find their name, confirm "Check in as …?", and see their team reveal. Their phone remembers them and shows "Irene, you're on Witch" on every tab.
+- **Teams** and **Tournament** – the live standings and brackets, read-only.
+
+Set `VITE_PUBLIC_URL` to the deployed address so the QR code points at the live site even when you open the organizer screens elsewhere. The QR dialog warns you if the link would point at `localhost`.
+
+Anonymous visitors can read players, results and brackets (`0003_party_page.sql`). The only change they can make is checking in through `check_in_player`. Everything else is refused by the database, which the SQL tests check by running as the `anon` role.

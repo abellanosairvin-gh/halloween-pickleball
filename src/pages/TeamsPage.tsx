@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useAccess } from '../auth/Access';
 import { ConfirmDialog, Dialog } from '../components/Dialog';
 import { TeamCrest } from '../components/TeamCrest';
 import { useToast } from '../components/Toast';
@@ -22,6 +23,7 @@ const HISTORY_SHOWN = 30;
 
 export function TeamsPage() {
   const { data, records, run } = useEventData();
+  const { canEdit } = useAccess();
   const players = data!.players;
   const standings = rankTeams(players, records);
   const anyGames = standings.some((s) => s.record.games > 0);
@@ -49,14 +51,19 @@ export function TeamsPage() {
       <header className="page-head">
         <h1 className="page-title">Teams</h1>
         {!anyGames && (
-          <p className="page-meta">Win rates appear once results are recorded. Add a win or loss next to a player after each game.</p>
+          <p className="page-meta">
+            {canEdit
+              ? 'Win rates appear once results are recorded. Add a win or loss next to a player after each game.'
+              : 'Win rates appear here as games are played. The team with the best win rate wins the prize.'}
+          </p>
         )}
-        {simulatedCount > 0 && (
+        {canEdit && simulatedCount > 0 && (
           <p className="page-meta">
             Includes {simulatedCount} simulated {simulatedCount === 1 ? 'result' : 'results'}. Clear them before the
             real games start.
           </p>
         )}
+        {canEdit && (
         <div className="page-actions">
           <button type="button" className="btn btn--small" disabled={checkedIn === 0} onClick={() => setConfirmSimulate(true)}>
             Simulate {SIMULATED_GAMES} games
@@ -67,6 +74,7 @@ export function TeamsPage() {
             </button>
           )}
         </div>
+        )}
       </header>
 
       <ol className="race" aria-label="Team standings by win rate">
@@ -151,6 +159,7 @@ function TeamPanel({
   onAdd: (player: Player, outcome: Outcome) => void;
 }) {
   const { data, records } = useEventData();
+  const { canEdit, meId, paths } = useAccess();
   const history = useMemo(() => {
     const byPlayer = new Map<string, Outcome[]>();
     for (const r of data!.results) byPlayer.set(r.playerId, [...(byPlayer.get(r.playerId) ?? []), r.outcome]);
@@ -180,7 +189,7 @@ function TeamPanel({
 
       {members.length === 0 ? (
         <p className="team__empty">
-          No one on {teamName(teamId)} yet. Players join a team when they <Link to="/players">check in</Link>.
+          No one on {teamName(teamId)} yet. Players join a team when they <Link to={paths.players}>check in</Link>.
         </p>
       ) : (
         (['F', 'M'] as Gender[]).map((gender) => {
@@ -193,22 +202,33 @@ function TeamPanel({
                 {group.map((p) => {
                   const r = recordOf(records, p.id);
                   return (
-                    <li key={p.id} className="member">
+                    <li
+                      key={p.id}
+                      className={`member ${canEdit ? '' : 'member--readonly'} ${p.id === meId ? 'is-me' : ''}`}
+                    >
                       <span className="member__who">
                         <span className="member__line">
                           <span className="member__name">{p.name}</span>
                           <ResultHistory outcomes={history.get(p.id) ?? []} />
                         </span>
                       </span>
-                      <button
-                        type="button"
-                        className="member__record"
-                        onClick={() => onEditRecord(p.id)}
-                        aria-label={`${p.name}: ${r.wins} wins, ${r.losses} losses. Correct results`}
-                      >
-                        <span className="member__rate">{formatRate(r.rate)}</span>
-                        <span className="member__wl">{formatRecord(r)}</span>
-                      </button>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          className="member__record"
+                          onClick={() => onEditRecord(p.id)}
+                          aria-label={`${p.name}: ${r.wins} wins, ${r.losses} losses. Correct results`}
+                        >
+                          <span className="member__rate">{formatRate(r.rate)}</span>
+                          <span className="member__wl">{formatRecord(r)}</span>
+                        </button>
+                      ) : (
+                        <span className="member__record" aria-label={`${r.wins} wins, ${r.losses} losses`}>
+                          <span className="member__rate">{formatRate(r.rate)}</span>
+                          <span className="member__wl">{formatRecord(r)}</span>
+                        </span>
+                      )}
+                      {canEdit && (
                       <span className="member__add">
                         <button type="button" className="tally tally--w" onClick={() => onAdd(p, 'W')} aria-label={`Add a win for ${p.name}`}>
                           +W
@@ -217,6 +237,7 @@ function TeamPanel({
                           +L
                         </button>
                       </span>
+                      )}
                     </li>
                   );
                 })}

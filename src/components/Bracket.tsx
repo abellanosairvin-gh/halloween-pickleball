@@ -1,3 +1,4 @@
+import { useAccess } from '../auth/Access';
 import { useEventData } from '../data/EventData';
 import { type BracketView, type MatchView, validWinners } from '../domain/bracket';
 import { teamName } from '../domain/teams';
@@ -8,6 +9,7 @@ const MATCH_LABEL = { semi1: 'Semifinal 1', semi2: 'Semifinal 2', final: 'Final'
 
 export function Bracket({ gender, view }: { gender: Gender; view: BracketView }) {
   const { data, run } = useEventData();
+  const { canEdit } = useAccess();
   const nameOf = (id: string) => data!.players.find((p) => p.id === id)?.name ?? 'Unknown';
 
   const renderSide = (match: MatchView, side: 0 | 1) => {
@@ -19,10 +21,28 @@ export function Bracket({ gender, view }: { gender: Gender; view: BracketView })
     const decided = match.winnerSlot !== null;
     const won = match.winnerSlot === slot;
     const allowed = validWinners(view, match.key).includes(slot);
+    const className = `side team-${pair.teamId} ${won ? 'is-winner' : ''} ${decided && !won ? 'is-out' : ''}`;
+    const names = (
+      <>
+        <TeamCrest team={pair.teamId} size={18} className="side__crest" />
+        <span className="side__names">
+          <span>{nameOf(pair.player1Id)}</span>
+          <span>{nameOf(pair.player2Id)}</span>
+        </span>
+      </>
+    );
+    if (!canEdit) {
+      return (
+        <div className={`${className} side--static`}>
+          {names}
+          {won && <span className="visually-hidden">Winner</span>}
+        </div>
+      );
+    }
     return (
       <button
         type="button"
-        className={`side team-${pair.teamId} ${won ? 'is-winner' : ''} ${decided && !won ? 'is-out' : ''}`}
+        className={className}
         aria-pressed={won}
         disabled={!allowed}
         onClick={() => void run(['matches'], (r) => r.setMatchWinner(gender, match.key, won ? null : slot))}
@@ -30,11 +50,7 @@ export function Bracket({ gender, view }: { gender: Gender; view: BracketView })
           won ? 'Winner. Tap to clear.' : 'Tap to mark as winner.'
         }`}
       >
-        <TeamCrest team={pair.teamId} size={18} className="side__crest" />
-        <span className="side__names">
-          <span>{nameOf(pair.player1Id)}</span>
-          <span>{nameOf(pair.player2Id)}</span>
-        </span>
+        {names}
       </button>
     );
   };
@@ -66,7 +82,7 @@ export function Bracket({ gender, view }: { gender: Gender; view: BracketView })
           {renderMatch(view.final)}
         </div>
       </div>
-      <p className="bracket-note">Tap the pair that won each match. Tap again to clear a result.</p>
+      {canEdit && <p className="bracket-note">Tap the pair that won each match. Tap again to clear a result.</p>}
       {champion && (
         <div className={`champion team-${champion.teamId}`} role="status">
           <TeamCrest team={champion.teamId} size={56} className="champion__crest" />

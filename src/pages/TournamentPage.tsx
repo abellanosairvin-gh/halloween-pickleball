@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAccess } from '../auth/Access';
 import { Bracket } from '../components/Bracket';
 import { ConfirmDialog, Dialog } from '../components/Dialog';
 import { TeamCrest } from '../components/TeamCrest';
@@ -40,6 +41,7 @@ export function TournamentPage() {
 
 function GenderBracket({ gender, hiddenOnMobile }: { gender: Gender; hiddenOnMobile: boolean }) {
   const { data, records, run } = useEventData();
+  const { canEdit } = useAccess();
   const { players, pairs, matches } = data!;
   const view = buildBracket(gender, pairs, matches);
   const [overrides, setOverrides] = useState<Partial<Record<TeamId, [string, string]>>>({});
@@ -81,6 +83,7 @@ function GenderBracket({ gender, hiddenOnMobile }: { gender: Gender; hiddenOnMob
       {view.locked ? (
         <>
           <Bracket gender={gender} view={view} />
+          {canEdit && (
           <div className="bracket-actions">
             {canRedraw(matches, gender) && (
               <button type="button" className="btn" onClick={redraw}>
@@ -91,11 +94,14 @@ function GenderBracket({ gender, hiddenOnMobile }: { gender: Gender; hiddenOnMob
               Reset bracket
             </button>
           </div>
+          )}
         </>
       ) : (
         <>
           <p className="bracket-intro">
-            These pairs follow the current standings and update as results come in. Lock them when team play ends.
+            {canEdit
+              ? 'These pairs follow the current standings and update as results come in. Lock them when team play ends.'
+              : 'If team play ended now, these would be the pairs. They update as results come in, and the bracket appears here once the organizer locks them.'}
           </p>
           <ul className="pair-list">
             {TEAMS.map((t) => {
@@ -120,17 +126,21 @@ function GenderBracket({ gender, hiddenOnMobile }: { gender: Gender; hiddenOnMob
                       Needs 2 {gender === 'F' ? 'women' : 'men'} with {MIN_PAIR_GAMES}+ games, has {pair.length}
                     </span>
                   )}
-                  <button type="button" className="btn btn--small btn--quiet" onClick={() => setPicking(t.id)}>
-                    {custom ? 'Edited' : 'Change'}
-                  </button>
+                  {canEdit && (
+                    <button type="button" className="btn btn--small btn--quiet" onClick={() => setPicking(t.id)}>
+                      {custom ? 'Edited' : 'Change'}
+                    </button>
+                  )}
                 </li>
               );
             })}
           </ul>
-          <button type="button" className="btn btn--primary btn--block" disabled={!ready} onClick={lock}>
-            Lock pairs and draw semifinals
-          </button>
-          {!ready && (
+          {canEdit && (
+            <button type="button" className="btn btn--primary btn--block" disabled={!ready} onClick={lock}>
+              Lock pairs and draw semifinals
+            </button>
+          )}
+          {canEdit && !ready && (
             <p className="bracket-note">
               Every team needs a pair before the draw. Players qualify once they have {MIN_PAIR_GAMES} recorded games.
             </p>
