@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useAccess } from '../auth/Access';
 import { CheckInReveal, type Reveal } from '../components/CheckInReveal';
 import { Dialog } from '../components/Dialog';
+import { EditIcon } from '../components/EditIcon';
 import { PlayerForm } from '../components/PlayerForm';
 import { TeamCrest } from '../components/TeamCrest';
 import { SkillMark } from '../components/SkillMark';
@@ -9,7 +10,7 @@ import { useEventData } from '../data/EventData';
 import { lockedPairMessage, lockedPairPlayerIds } from '../domain/roster';
 import { compareForRoster, recordOf } from '../domain/standings';
 import { GENDER_LABEL, TEAMS, teamName } from '../domain/teams';
-import type { Gender, Player } from '../domain/types';
+import type { Gender, Player, TeamId } from '../domain/types';
 
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
 
@@ -22,7 +23,6 @@ export function PlayersPage() {
   const [reveal, setReveal] = useState<Reveal | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [editMode, setEditMode] = useState(false);
   const [formTarget, setFormTarget] = useState<Player | 'new' | null>(null);
   /** Party page only: the name a guest tapped, waiting for "Check me in". */
   const [confirmSelf, setConfirmSelf] = useState<Player | null>(null);
@@ -54,11 +54,9 @@ export function PlayersPage() {
         <h1 className="page-title">{canEdit ? 'Players' : 'Check in'}</h1>
         <p className="page-meta">
           <strong>{checkedIn}</strong> of {players.length} checked in.{' '}
-          {!canEdit
-            ? 'Find your name and tap it. You’ll be put on a team right away.'
-            : editMode
-              ? 'Tap a player to change their details or delete them.'
-              : 'Tap a name to check them in, or tap a checked-in player to change their team.'}
+          {canEdit
+            ? 'Check players in as they arrive. Use Edit to change a player’s team, details or check-in.'
+            : 'Find your name and tap Check in. You’ll be put on a team right away.'}
         </p>
         <ArrivalRoll players={players} />
       </header>
@@ -79,25 +77,15 @@ export function PlayersPage() {
           <span>Not checked in</span>
         </label>
         {canEdit && (
-        <div className="toolbar__actions">
-          {editMode && (
-            <button type="button" className="btn btn--primary btn--small" onClick={() => setFormTarget('new')}>
+          <div className="toolbar__actions">
+            <button type="button" className="btn btn--small" onClick={() => setFormTarget('new')}>
               Add player
             </button>
-          )}
-          <button
-            type="button"
-            className="btn btn--small"
-            aria-pressed={editMode}
-            onClick={() => setEditMode((on) => !on)}
-          >
-            {editMode ? 'Done editing' : 'Edit list'}
-          </button>
-        </div>
+          </div>
         )}
       </div>
 
-      <div className={`roster-columns ${editMode ? 'is-editing' : ''}`}>
+      <div className="roster-columns">
         {(['F', 'M'] as Gender[]).map((gender) => {
           const group = visible.filter((p) => p.gender === gender);
           const all = players.filter((p) => p.gender === gender);
@@ -112,73 +100,66 @@ export function PlayersPage() {
               {group.length === 0 ? (
                 <p className="roster__empty">
                   {all.length === 0
-                    ? `No ${GENDER_LABEL[gender].toLowerCase()} on the list yet.${canEdit ? ' Use Edit list to add players.' : ''}`
+                    ? `No ${GENDER_LABEL[gender].toLowerCase()} on the list yet.${canEdit ? ' Use Add player to add some.' : ''}`
                     : onlyWaiting && !query
                       ? `All ${GENDER_LABEL[gender].toLowerCase()} are checked in.`
                       : 'No names match.'}
                 </p>
               ) : (
                 <ul className="roster__list">
-                  {group.map((p) => (
-                    <li key={p.id}>
-                      {editMode ? (
-                        <button
-                          type="button"
-                          className={`roster__row ${p.checkedInAt ? 'is-in' : ''}`}
-                          onClick={() => setFormTarget(p)}
-                          aria-label={`Edit ${p.name}`}
+                  {group.map((p) => {
+                    const isIn = Boolean(p.checkedInAt && p.teamId);
+                    return (
+                      <li key={p.id}>
+                        <div
+                          className={`roster__row ${canEdit ? '' : 'roster__row--plain'} ${isIn ? `is-in team-${p.teamId}` : ''} ${
+                            p.id === meId ? 'is-me' : ''
+                          }`}
                         >
-                          <SkillMark skill={p.skill} />
-                          <span className="roster__name">{p.name}</span>
-                          <span className="roster__edit" aria-hidden="true">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" focusable="false">
-                              <path d="M15.2 4.2l4.6 4.6L8.6 20H4v-4.6zm2.1-2.1 1.4-1.4a1.5 1.5 0 0 1 2.1 0l2.5 2.5a1.5 1.5 0 0 1 0 2.1l-1.4 1.4z" />
-                            </svg>
-                            <span className="roster__edit-label">Edit</span>
-                          </span>
-                        </button>
-                      ) : p.checkedInAt && p.teamId && !canEdit ? (
-                        <div className={`roster__row roster__row--plain is-in ${p.id === meId ? 'is-me' : ''}`}>
+                          {canEdit && <SkillMark skill={p.skill} />}
                           <span className="roster__name">
                             {p.name}
                             {p.id === meId && <span className="visually-hidden"> (you)</span>}
                           </span>
-                          <span className={`roster__team team-${p.teamId}`}>
-                            <TeamCrest team={p.teamId} size={16} />
-                            <span className="roster__team-name">{teamName(p.teamId)}</span>
+                          <span className="roster__actions">
+                            {isIn ? (
+                              <span className={`roster__team team-${p.teamId}`}>
+                                <TeamCrest team={p.teamId!} size={26} />
+                                <span className="roster__team-name">{teamName(p.teamId!)}</span>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="roster__btn"
+                                disabled={busyId !== null}
+                                onClick={() => (canEdit ? void checkIn(p) : setConfirmSelf(p))}
+                                aria-label={`Check in ${p.name}`}
+                              >
+                                <span className="roster__checkin" aria-hidden="true">
+                                  <span className="roster__checkin-label">Check in</span>
+                                </span>
+                              </button>
+                            )}
+                            {canEdit && (
+                              <button
+                                type="button"
+                                className="roster__btn"
+                                onClick={() => (isIn ? setSelectedId(p.id) : setFormTarget(p))}
+                                aria-label={
+                                  isIn ? `Edit ${p.name}: change team, undo check-in or edit details` : `Edit ${p.name}`
+                                }
+                              >
+                                <span className="roster__edit" aria-hidden="true">
+                                  <EditIcon />
+                                  <span className="roster__edit-label">Edit</span>
+                                </span>
+                              </button>
+                            )}
                           </span>
                         </div>
-                      ) : p.checkedInAt && p.teamId ? (
-                        <button
-                          type="button"
-                          className="roster__row is-in"
-                          onClick={() => setSelectedId(p.id)}
-                          aria-label={`${p.name}, ${teamName(p.teamId)}. Change team or undo check-in`}
-                        >
-                          <SkillMark skill={p.skill} />
-                          <span className="roster__name">{p.name}</span>
-                          <span className={`roster__team team-${p.teamId}`}>
-                            <TeamCrest team={p.teamId} size={16} />
-                            <span className="roster__team-name">{teamName(p.teamId)}</span>
-                          </span>
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className={`roster__row ${canEdit ? '' : 'roster__row--plain'}`}
-                          disabled={busyId !== null}
-                          onClick={() => (canEdit ? void checkIn(p) : setConfirmSelf(p))}
-                          aria-label={`Check in ${p.name}`}
-                        >
-                          {canEdit && <SkillMark skill={p.skill} />}
-                          <span className="roster__name">{p.name}</span>
-                          <span className="roster__checkin" aria-hidden="true">
-                            <span className="roster__checkin-label">Check in</span>
-                          </span>
-                        </button>
-                      )}
-                    </li>
-                  ))}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </section>
@@ -254,9 +235,12 @@ function PlayerSheet({
 }) {
   const { data, run, records } = useEventData();
   const [confirmUndo, setConfirmUndo] = useState(false);
+  /** A team tapped in "Move to another team", waiting for confirmation. */
+  const [moveTo, setMoveTo] = useState<TeamId | null>(null);
 
   const close = () => {
     setConfirmUndo(false);
+    setMoveTo(null);
     onClose();
   };
 
@@ -270,7 +254,30 @@ function PlayerSheet({
         Checked in at {timeFormat.format(new Date(player.checkedInAt))} and playing for {teamName(player.teamId)}.
       </p>
 
-      {confirmUndo ? (
+      {moveTo ? (
+        <>
+          <p className="dialog__text">
+            Move {player.name} from {teamName(player.teamId)} to {teamName(moveTo)}?
+            {games > 0 &&
+              ` Their ${games} recorded ${games === 1 ? 'game moves' : 'games move'} with them, which changes both teams’ win rates.`}
+          </p>
+          <div className="dialog__actions">
+            <button type="button" className="btn btn--quiet" onClick={() => setMoveTo(null)}>
+              Keep on {teamName(player.teamId)}
+            </button>
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => {
+                void run(['players'], (r) => r.moveToTeam(player.id, moveTo));
+                close();
+              }}
+            >
+              Move to {teamName(moveTo)}
+            </button>
+          </div>
+        </>
+      ) : confirmUndo ? (
         <>
           <p className="dialog__text">
             Undo {player.name}’s check-in? They’ll leave {teamName(player.teamId)} and go back to the not-checked-in list.
@@ -304,10 +311,7 @@ function PlayerSheet({
                 className={`team-picker__btn team-${t.id}`}
                 aria-pressed={player.teamId === t.id}
                 disabled={locked || player.teamId === t.id}
-                onClick={() => {
-                  void run(['players'], (r) => r.moveToTeam(player.id, t.id));
-                  close();
-                }}
+                onClick={() => setMoveTo(t.id)}
               >
                 <TeamCrest team={t.id} size={22} />
                 {t.name}

@@ -6,7 +6,15 @@ import { TeamCrest } from '../components/TeamCrest';
 import { SkillMark } from '../components/SkillMark';
 import { useEventData } from '../data/EventData';
 import { buildBracket, canRedraw, drawPairs, type PairDraft } from '../domain/bracket';
-import { compareByStanding, formatRate, isPairEligible, MIN_PAIR_GAMES, qualifiers, recordOf } from '../domain/standings';
+import {
+  compareByStanding,
+  formatRate,
+  isPairEligible,
+  MIN_PAIR_GAMES,
+  pairPicture,
+  qualifiers,
+  recordOf,
+} from '../domain/standings';
 import { GENDER_LABEL, TEAMS, teamName } from '../domain/teams';
 import type { Gender, Player, TeamId } from '../domain/types';
 
@@ -107,8 +115,13 @@ function GenderBracket({ gender, hiddenOnMobile }: { gender: Gender; hiddenOnMob
             {TEAMS.map((t) => {
               const pair = pairFor(t.id);
               const custom = Boolean(overrides[t.id]) && pair.length === 2;
+              // Players level on win rate for a spot, until the organizer picks the pair themselves.
+              const tied =
+                canEdit && !custom
+                  ? players.filter((p) => pairPicture(players, records, t.id, gender).tied.has(p.id)).sort(compareByStanding(records))
+                  : [];
               return (
-                <li key={t.id} className="pair-card">
+                <li key={t.id} className={`pair-card team-${t.id}`}>
                   <span className={`pair-card__team team-${t.id}`}>
                     <TeamCrest team={t.id} size={18} />
                     {t.name}
@@ -126,9 +139,15 @@ function GenderBracket({ gender, hiddenOnMobile }: { gender: Gender; hiddenOnMob
                       Needs 2 {gender === 'F' ? 'women' : 'men'} with {MIN_PAIR_GAMES}+ games, has {pair.length}
                     </span>
                   )}
+                  {tied.length > 0 && (
+                    <p className="pair-card__tie">
+                      <span className="member__tie">Tie</span> {listNames(tied.map((p) => p.name))} are level on{' '}
+                      {formatRate(recordOf(records, tied[0].id).rate)}. Choose who plays.
+                    </p>
+                  )}
                   {canEdit && (
                     <button type="button" className="btn btn--small btn--quiet" onClick={() => setPicking(t.id)}>
-                      {custom ? 'Edited' : 'Change'}
+                      {custom ? 'Edited' : tied.length > 0 ? 'Choose' : 'Change'}
                     </button>
                   )}
                 </li>
@@ -170,6 +189,11 @@ function GenderBracket({ gender, hiddenOnMobile }: { gender: Gender; hiddenOnMob
   );
 }
 
+/** "A, B and C" */
+function listNames(names: string[]): string {
+  return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+}
+
 function PairPicker({
   teamId,
   gender,
@@ -200,6 +224,7 @@ function PairPicker({
     onClose();
   };
   const eligibleCount = candidates.filter((p) => isPairEligible(records, p.id)).length;
+  const picture = pairPicture(data!.players, records, teamId, gender);
   const toggle = (id: string) =>
     setPicked(selection.includes(id) ? selection.filter((x) => x !== id) : [...selection, id].slice(-2));
 
@@ -214,6 +239,7 @@ function PairPicker({
         <>
           <p className="dialog__text">
             Choose two players with at least {MIN_PAIR_GAMES} games. They’re listed by win rate, best first.
+            {picture.tied.size > 0 && ' Players marked Tie are level on win rate for the last spot.'}
             {eligibleCount < 2 &&
               ` Only ${eligibleCount} ${eligibleCount === 1 ? 'has' : 'have'} played enough so far. Record more games on the Teams tab.`}
           </p>
@@ -223,7 +249,11 @@ function PairPicker({
               const eligible = isPairEligible(records, p.id);
               return (
                 <li key={p.id}>
-                  <label className={`pick-list__row ${eligible ? '' : 'is-ineligible'}`}>
+                  <label
+                    className={`pick-list__row ${eligible ? '' : 'is-ineligible'} ${picture.top.has(p.id) ? 'is-top' : ''} ${
+                      picture.tied.has(p.id) ? 'is-tied' : ''
+                    }`}
+                  >
                     <input
                       type="checkbox"
                       checked={eligible && selection.includes(p.id)}
@@ -231,7 +261,10 @@ function PairPicker({
                       onChange={() => toggle(p.id)}
                     />
                     <span className="pick-list__who">
-                      <span className="pick-list__name">{p.name}</span>
+                      <span className="pick-list__name">
+                        {p.name}
+                        {picture.tied.has(p.id) && <span className="member__tie">Tie</span>}
+                      </span>
                       {!eligible && (
                         <span className="pick-list__note">
                           {r.games} of {MIN_PAIR_GAMES} games

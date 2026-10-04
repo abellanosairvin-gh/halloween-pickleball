@@ -1,9 +1,9 @@
-# Irvin's Halloween Pickleball Party
+# Irvin's Dink or Treat Halloween Birthday Party
 
 Organizer site for the party: check players in (which assigns their team), record wins and losses during team play, and run the women's and men's doubles brackets.
 
-- **Players** – women on the left and men on the right, A before B. Tap a name to check them in, which assigns a team and shows the reveal. Tap a checked-in player to move them, undo the check-in or edit their details. **Edit list** switches the page to editing, where you can add, rename, re-level or delete players. A player in a locked tournament pair can't change gender or team, undo their check-in or be deleted until that bracket is reset.
-- **Teams** – a 1st-to-4th podium of teams by win rate (the prize goes to 1st; teams on the same rate share a place), and each team's women and men by win rate, with a green/red bar per game. **+W** / **+L** ask for confirmation before recording. Tap a player's record to remove a result entered by mistake. **Simulate 5 games** adds random results to every checked-in player for a dry run; they're marked as simulated and **Clear simulated results** removes only those.
+- **Players** – women on the left and men on the right, A before B. Each row has a **Check in** button, which assigns a team and shows the reveal, and an **Edit** button: for a checked-in player it moves them to another team, undoes the check-in or edits their details, and for anyone else it renames, re-levels or deletes them. Tapping the row itself does nothing. **Add player** adds someone who isn't on the list. A player in a locked tournament pair can't change gender or team, undo their check-in or be deleted until that bracket is reset.
+- **Teams** – a 1st-to-4th podium of teams by win rate (the prize goes to 1st; on the same win rate the team with more games ranks higher, and on an identical record the team that got there first), and each team's women and men by win rate, with a green/red bar per game. **+W** / **+L** ask for confirmation before recording. Tap a player's record to remove a result entered by mistake. **Simulate 5 games** adds random results to every checked-in player for a dry run; they're marked as simulated and **Clear simulated results** removes only those.
 - **Tournament** – each team's top 2 women and top 2 men by win rate form fixed doubles pairs. Only players with at least 4 recorded games qualify (`MIN_PAIR_GAMES` in `src/domain/standings.ts`, also enforced in `set_bracket_pairs`). Lock the pairs to draw the semifinals at random, then tap the winning pair of each match. The semifinal winners play the final and the losers play the battle for 3rd, and the podium below the bracket fills in 1st to 4th.
 
 ## How teams stay fair
@@ -42,7 +42,7 @@ Set three environment variables on the Vercel project: `DATABASE_URL`, `ORGANIZE
 
 ## Updating the roster
 
-For changes on the day, use **Edit list** on the Players tab. To reload the whole list, put `pickleball_players.xlsx` in the project root (it isn't committed to the repository), edit it, and run `npm run seed:sql`. This regenerates `db/seed.sql` and the demo roster. `npm run db:setup` only loads the seed into an empty players table. To apply a changed list to a database that already has players, run `db/seed.sql` in the Neon SQL editor. That updates existing players by name and adds new ones, and it also brings back anyone deleted in the app who is still in the spreadsheet.
+For changes on the day, use **Add player** and the **Edit** buttons on the Players tab. To reload the whole list, put `pickleball_players.xlsx` in the project root (it isn't committed to the repository), edit it, and run `npm run seed:sql`. This regenerates `db/seed.sql` and the demo roster. `npm run db:setup` only loads the seed into an empty players table. To apply a changed list to a database that already has players, run `db/seed.sql` in the Neon SQL editor. That updates existing players by name and adds new ones, and it also brings back anyone deleted in the app who is still in the spreadsheet.
 
 ## Tests
 
@@ -54,11 +54,11 @@ Covers team balancing for any arrival order, standings and tie-breaks, qualifier
 
 ## Party page and QR code
 
-Guests don't need an account. The **QR code** button in the organizer header shows a code for `/party`, with options to copy the link or print a poster (`/qr`). The party page has three tabs:
+Guests don't need an account. The **QR code** button in the organizer header shows a Halloween-themed code for `/party` to hold up for guests to scan. The party page has three tabs:
 
 - **Check in** – guests find their name, confirm "Check in as …?", and see their team reveal. Their phone remembers them and shows "Irene, you're on Witch" on every tab.
 - **Teams** and **Tournament** – the live standings and brackets, read-only.
 
-The QR code uses the address the organizer has open, so open the organizer screens on the deployed site before showing or printing it. Set `VITE_PUBLIC_URL` if you use a custom domain or want the code to always point at one address. The QR dialog warns you if the link would point at `localhost`.
+The QR code uses the address the organizer has open, so open the organizer screens on the deployed site before showing it. Set `VITE_PUBLIC_URL` if you use a custom domain or want the code to always point at one address. The QR dialog warns you if the link would point at `localhost`.
 
 Guests can read players, results and brackets, and the only change they can make is checking in. Everything else needs the organizer session, which `tests/api.test.ts` checks.

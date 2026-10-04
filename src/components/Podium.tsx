@@ -7,8 +7,6 @@ export interface PodiumPlace {
   /** Shown above the step: a team name or a pair's names. */
   title: ReactNode;
   detail?: ReactNode;
-  /** Finishing place when it differs from the position, for a tie. */
-  rank?: number;
   href?: string;
 }
 
@@ -16,14 +14,13 @@ const ORDINAL = ['1st', '2nd', '3rd', '4th'];
 
 /**
  * Four steps for 1st to 4th, arranged 2nd, 1st, 3rd, 4th so the winner stands tallest in the middle.
- * The list itself stays in finishing order for screen readers. Tied places share a step height.
- * A null place is still to be decided.
+ * The list itself stays in finishing order for screen readers. A null place is still to be decided.
  */
 export function Podium({ places, label }: { places: (PodiumPlace | null)[]; label: string }) {
   return (
     <ol className="podium" aria-label={label}>
       {places.slice(0, 4).map((place, i) => {
-        const rank = place?.rank ?? i + 1;
+        const rank = i + 1;
         if (!place) {
           return (
             <li key={i} className={`podium__place podium__place--${i + 1} is-open`} data-rank={rank}>

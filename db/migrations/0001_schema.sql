@@ -1,4 +1,4 @@
--- Irvin's Halloween Pickleball Party: schema, check-in logic and brackets.
+-- Irvin's Dink or Treat Halloween Birthday Party: schema, check-in logic and brackets.
 -- The app reaches the database only through the API in api/, which decides who may do what:
 -- anyone can read and check in, and everything else needs the organizer's session.
 

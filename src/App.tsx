@@ -7,7 +7,6 @@ import { PartyShell } from './components/PartyShell';
 import { ToastProvider } from './components/Toast';
 import { EventDataProvider } from './data/EventData';
 import { PlayersPage } from './pages/PlayersPage';
-import { QrPosterPage } from './pages/QrPosterPage';
 import { TeamsPage } from './pages/TeamsPage';
 import { TournamentPage } from './pages/TournamentPage';
 
@@ -35,15 +34,6 @@ export function App() {
               <Route path="teams" element={<TeamsPage />} />
               <Route path="tournament" element={<TournamentPage />} />
             </Route>
-
-            <Route
-              path="/qr"
-              element={
-                <RequireAuth>
-                  <QrPosterPage />
-                </RequireAuth>
-              }
-            />
 
             <Route
               element={

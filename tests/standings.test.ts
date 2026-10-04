@@ -9,6 +9,7 @@ import {
   playerRecords,
   qualifiers,
   rankTeams,
+  pairPicture,
   teamRecord,
 } from '../src/domain/standings';
 import type { GameResult, Outcome, Player } from '../src/domain/types';
@@ -127,5 +128,72 @@ describe('roster order', () => {
       player('5', { name: 'Ab', gender: 'F', skill: 'A' }),
     ];
     expect([...players].sort(compareForRoster).map((p) => p.name)).toEqual(['Ab', 'Di', 'Cy', 'Bo', 'Al']);
+  });
+});
+
+describe('podium places', () => {
+  const team = (id: string, teamId: Player['teamId']) => player(id, { teamId, checkedInAt: 't' });
+  const at = (playerId: string, outcome: Outcome, createdAt: string): GameResult => ({
+    id: `${playerId}-${createdAt}`,
+    playerId,
+    outcome,
+    createdAt,
+    simulated: false,
+  });
+
+  it('breaks a win-rate tie by games played, so no two teams share a place', () => {
+    // Pumpkin 10/20 and Witch 5/10 are both 50%; Skull 3/10 is next; Dracula has no games yet.
+    const players = [team('p', 'pumpkin'), team('w', 'witch'), team('s', 'skull'), team('b', 'bat')];
+    const results = [...games('w', 5, 5), ...games('p', 10, 10), ...games('s', 3, 7)];
+    const order = rankTeams(players, playerRecords(results), results).map((s) => s.teamId);
+    expect(order).toEqual(['pumpkin', 'witch', 'skull', 'bat']);
+  });
+
+  it('puts the team that reached an identical record first ahead', () => {
+    const players = [team('p', 'pumpkin'), team('w', 'witch')];
+    const results = [
+      at('w', 'W', '2026-10-31T19:00:00Z'),
+      at('w', 'L', '2026-10-31T19:10:00Z'),
+      at('p', 'W', '2026-10-31T19:05:00Z'),
+      at('p', 'L', '2026-10-31T19:20:00Z'),
+    ];
+    const order = rankTeams(players, playerRecords(results), results).map((s) => s.teamId);
+    expect(order.slice(0, 2)).toEqual(['witch', 'pumpkin']);
+  });
+});
+
+describe('pair picture (organizer highlights)', () => {
+  const woman = (id: string) => player(id, { teamId: 'witch', gender: 'F', checkedInAt: 't' });
+  const picture = (players: Player[], results: GameResult[]) => {
+    const p = pairPicture(players, playerRecords(results), 'witch', 'F');
+    return { top: [...p.top].sort(), tied: [...p.tied].sort() };
+  };
+
+  it('marks a clear top two', () => {
+    const players = ['a', 'b', 'c'].map(woman);
+    expect(picture(players, [...games('a', 4, 1), ...games('b', 3, 2), ...games('c', 2, 3)])).toEqual({
+      top: ['a', 'b'],
+      tied: [],
+    });
+  });
+
+  it('marks everyone level on win rate for the last spot as tied', () => {
+    // a is 80%; b, c and d are all 60% for the one remaining spot.
+    const players = ['a', 'b', 'c', 'd'].map(woman);
+    const results = [...games('a', 4, 1), ...games('b', 3, 2), ...games('c', 6, 4), ...games('d', 3, 2)];
+    expect(picture(players, results)).toEqual({ top: ['a'], tied: ['b', 'c', 'd'] });
+  });
+
+  it('marks three players on the same rate as tied for both spots', () => {
+    const players = ['a', 'b', 'c'].map(woman);
+    const results = [...games('a', 3, 2), ...games('b', 3, 2), ...games('c', 3, 2)];
+    expect(picture(players, results)).toEqual({ top: [], tied: ['a', 'b', 'c'] });
+  });
+
+  it('ignores players without enough games', () => {
+    // c is also 50% but has only 2 games, so a and b are clear.
+    const players = ['a', 'b', 'c'].map(woman);
+    const results = [...games('a', 3, 2), ...games('b', 2, 2), ...games('c', 1, 1)];
+    expect(picture(players, results)).toEqual({ top: ['a', 'b'], tied: [] });
   });
 });

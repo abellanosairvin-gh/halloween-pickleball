@@ -506,7 +506,7 @@ a {
   border-top: 1px solid var(--rule);
 }
 
-/* The whole row is the button: tap to check in, or tap a checked-in player to manage them. */
+/* The row itself isn't clickable; only its Check in and Edit buttons are. */
 .roster__row {
   display: grid;
   grid-template-columns: 22px 1fr auto;
@@ -518,14 +518,6 @@ a {
   border: 0;
   background: none;
   text-align: left;
-}
-
-.roster__row:focus-visible {
-  outline-offset: -3px;
-}
-
-.roster__row:disabled {
-  cursor: progress;
 }
 
 .roster__row .skill {
@@ -549,8 +541,39 @@ a {
   grid-template-columns: 1fr auto;
 }
 
-div.roster__row {
-  cursor: default;
+/* A checked-in row is filled with its team colour, with everything in it in white. A soft shadow
+   keeps white text crisp on the lighter teams (Pumpkin and Skull). */
+.roster__row.is-in {
+  background: var(--team);
+  color: #fff;
+  box-shadow: inset 0 0 0 1.5px var(--team-edge);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+}
+
+.roster__row.is-in .skill {
+  border-color: currentColor;
+  background: transparent;
+  color: inherit;
+}
+
+.roster__row.is-in .skill--A {
+  background: #fff;
+  color: #1b1724;
+  text-shadow: none;
+}
+
+.roster__row.is-in .roster__team,
+.roster__row.is-in .roster__edit svg {
+  filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.5));
+}
+
+.roster__row.is-in .roster__edit {
+  border-color: currentColor;
+  color: inherit;
+}
+
+.roster__row.is-in .roster__btn:focus-visible {
+  outline-color: currentColor;
 }
 
 .roster__row.is-me,
@@ -558,25 +581,68 @@ div.roster__row {
   box-shadow: inset 4px 0 0 var(--ink);
 }
 
+.roster__row.is-in.is-me {
+  box-shadow: inset 6px 0 0 #fff;
+}
+
 .roster__row.is-me .roster__name,
 .member.is-me .member__name {
   font-weight: 800;
 }
 
-/* On phones the team shows as its crest and a waiting player as a dashed empty slot. */
-.roster__team,
+.roster__actions {
+  display: flex;
+  align-items: center;
+}
+
+/* Full row height to tap, however small the mark inside it. */
+.roster__btn {
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+}
+
+.roster__btn:disabled {
+  cursor: progress;
+}
+
+/* The row's colour already names the team, so the team shows as its icon alone. */
+.roster__team {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 34px;
+  color: inherit;
+}
+
+.roster__team svg {
+  width: 24px;
+  height: 24px;
+}
+
+@media (min-width: 600px) {
+  .roster__team {
+    width: 34px;
+  }
+
+  .roster__team svg {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+/* On phones a waiting player shows a dashed empty slot. */
 .roster__checkin {
   display: inline-grid;
   place-items: center;
   width: 28px;
   height: 28px;
   border-radius: 50%;
-}
-
-.roster__team {
-  background: var(--team);
-  color: var(--on-team);
-  box-shadow: inset 0 0 0 1.5px var(--team-edge);
 }
 
 .roster__team-name,
@@ -598,12 +664,6 @@ div.roster__row {
   color: var(--ink-soft);
   font-weight: 800;
   line-height: 1;
-}
-
-/* Edit mode: a dashed outline makes it clear that taps edit instead of checking in. */
-.roster-columns.is-editing .roster__list {
-  outline: 2px dashed var(--ink-soft);
-  outline-offset: 2px;
 }
 
 .roster__edit {
@@ -647,7 +707,6 @@ div.roster__row {
     font-size: var(--step-0);
   }
 
-  .roster__team,
   .roster__checkin {
     display: inline-flex;
     gap: 6px;
@@ -670,7 +729,6 @@ div.roster__row {
     font-weight: 700;
   }
 
-  .roster__team-name,
   .roster__checkin-label,
   .roster__edit-label {
     position: static;
@@ -689,6 +747,10 @@ div.roster__row {
 
   .roster__checkin::before {
     content: none;
+  }
+
+  .roster__actions {
+    gap: 6px;
   }
 }
 
@@ -737,8 +799,10 @@ div.roster__row {
   margin-top: 4px;
 }
 
-.dialog__actions--stack {
+/* Two equal buttons side by side, on phones too. */
+.dialog__actions--pair {
   display: grid;
+  grid-template-columns: 1fr 1fr;
 }
 
 @media (max-width: 599px) {
@@ -758,6 +822,17 @@ div.roster__row {
   .dialog__actions > .btn {
     flex: 1 1 auto;
   }
+}
+
+/* What an edit is about to change, one line per field. */
+.change-list {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: var(--radius-control);
+  background: var(--page);
+  font-weight: 600;
+  list-style: none;
 }
 
 .team-picker {
@@ -910,109 +985,87 @@ div.roster__row {
 }
 
 .qr--dialog {
-  width: min(260px, 70vw);
-  border-radius: var(--radius-control);
+  width: min(240px, 62vw);
+  border-radius: 10px;
 }
 
-.qr-link {
-  font-weight: 700;
-  text-align: center;
-  overflow-wrap: anywhere;
+/* QR dialog: a Halloween night sheet trimmed in the four team colours. */
+.dialog--qr {
+  --sheet-trim: linear-gradient(90deg, var(--pumpkin) 0 25%, var(--witch) 25% 50%, var(--skull) 50% 75%, var(--bat) 75%);
+  background:
+    var(--sheet-trim) top / 100% 8px no-repeat,
+    radial-gradient(120% 70% at 50% 0%, rgb(240 102 26 / 0.22), transparent 60%),
+    var(--court);
+  color: var(--court-line);
+  color-scheme: dark;
 }
 
-.poster {
-  min-height: 100dvh;
-  padding: 24px var(--gutter) 48px;
-  background: var(--page);
-}
-
-.poster__toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  max-width: 720px;
-  margin: 0 auto 20px;
-}
-
-.poster__sheet {
-  display: grid;
+.dialog--qr .dialog__body {
   justify-items: center;
-  gap: 14px;
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 48px 32px;
-  border-radius: var(--radius-panel);
-  background: #fff;
-  color: #1b1724;
+  padding-top: 30px;
   text-align: center;
 }
 
-.poster__title {
+.dialog--qr .dialog__title {
+  max-width: 16ch;
   font-family: var(--font-display);
-  font-size: clamp(2.5rem, 7vw, 4rem);
-  font-weight: 800;
+  font-size: var(--step-3);
   line-height: 0.95;
+  text-wrap: balance;
 }
 
-.poster__crests {
+.qr-sheet__crests {
   display: flex;
   gap: 10px;
 }
 
-.poster__crest {
+.qr-sheet__crest {
   display: grid;
   place-items: center;
-  width: 56px;
-  height: 56px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--team);
   color: var(--on-team);
+  box-shadow: 0 0 0 2px var(--court), 0 0 0 3.5px rgb(244 241 248 / 0.55);
 }
 
-.qr--poster {
-  width: min(420px, 80vw);
+/* The QR sits on white (what phone cameras read best) inside a frame of the four team colours. */
+.qr-sheet__frame {
+  padding: 8px;
+  border-radius: 16px;
+  background: conic-gradient(from -45deg, var(--pumpkin) 0 25%, var(--witch) 0 50%, var(--skull) 0 75%, #1b1724 0);
+  box-shadow: 0 0 0 1.5px rgb(244 241 248 / 0.55), 0 10px 40px rgb(240 102 26 / 0.25);
 }
 
-.poster__lede {
-  font-size: var(--step-2);
+.qr-sheet__lede {
+  max-width: 22ch;
+  font-size: var(--step-1);
   font-weight: 800;
-  line-height: 1.15;
+  line-height: 1.2;
 }
 
-.poster__sub {
-  max-width: 40ch;
-  color: #57506a;
+.qr-sheet__sub {
+  max-width: 34ch;
+  color: rgb(244 241 248 / 0.78);
 }
 
-.poster__url {
-  font-weight: 700;
-  overflow-wrap: anywhere;
+.qr-sheet__warning {
+  padding: 8px 12px;
+  border-radius: var(--radius-control);
+  background: rgb(200 55 45 / 0.25);
+  font-size: var(--step--1);
+  font-weight: 600;
 }
 
-@media print {
-  @page {
-    margin: 12mm;
-  }
+.dialog--qr .dialog__actions {
+  justify-self: stretch;
+}
 
-  .poster {
-    padding: 0;
-    background: #fff;
-  }
-
-  .poster__toolbar {
-    display: none;
-  }
-
-  .poster__sheet {
-    padding: 0;
-  }
-
-  .poster__crest {
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
+.qr-sheet__close {
+  border-color: rgb(244 241 248 / 0.6);
+  background: transparent;
+  color: var(--court-line);
 }
 
 /* Check-in reveal: the one big moment ---------------------------------------------------- */
@@ -1044,11 +1097,50 @@ div.roster__row {
   width: min(340px, 84vw);
   aspect-ratio: 3 / 4;
   transform-style: preserve-3d;
-  transition: transform 700ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+/* Three full spins that slow down and land on the team side (3.5 turns = 1260deg), with a small lift. */
 .reveal__card.is-flipped {
-  transform: rotateY(180deg);
+  transform: rotateY(1260deg);
+  animation:
+    reveal-spin 2400ms cubic-bezier(0.2, 0.6, 0.15, 1) both,
+    reveal-lift 2400ms ease-in-out both;
+}
+
+@keyframes reveal-spin {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(1260deg);
+  }
+}
+
+@keyframes reveal-lift {
+  0%,
+  100% {
+    scale: 1;
+  }
+  45% {
+    scale: 1.08;
+  }
+}
+
+/* Once it lands, a glow in the team's colour. */
+.reveal__card.is-flipped .reveal__face--front {
+  animation: reveal-glow 1400ms ease-out 2200ms both;
+}
+
+@keyframes reveal-glow {
+  0% {
+    box-shadow: inset 0 0 0 2px var(--team-edge), 0 0 0 0 var(--team);
+  }
+  35% {
+    box-shadow: inset 0 0 0 2px var(--team-edge), 0 0 0 14px color-mix(in srgb, var(--team) 45%, transparent);
+  }
+  100% {
+    box-shadow: inset 0 0 0 2px var(--team-edge), 0 0 0 28px transparent;
+  }
 }
 
 .reveal__face {
@@ -1102,19 +1194,17 @@ div.roster__row {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reveal__card {
-    transition: none;
-  }
-
   .reveal__card.is-flipped {
     transform: none;
+    animation: none;
   }
 
   .reveal__card.is-flipped .reveal__face--back {
     visibility: hidden;
   }
 
-  .reveal__face--front {
+  .reveal__face--front,
+  .reveal__card.is-flipped .reveal__face--front {
     transform: none;
     animation: reveal-fade 300ms ease-out;
   }
@@ -1466,6 +1556,64 @@ div.roster__row {
   padding: 8px 10px 8px 16px;
 }
 
+/* Organizer only, in one green for every team: who'd make each team's tournament pair, and who's tied for the last spot. */
+.member.is-top {
+  background: color-mix(in srgb, var(--win) 14%, var(--surface));
+}
+
+.member.is-tied {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--win) 18%, var(--surface)) 0 8px,
+    color-mix(in srgb, var(--win) 6%, var(--surface)) 8px 16px
+  );
+}
+
+.member__tie {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 7px;
+  border: 1.5px solid currentColor;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1.5;
+  vertical-align: 2px;
+}
+
+.pair-legend__swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  vertical-align: -2px;
+}
+
+.pair-legend__swatch--top {
+  background: color-mix(in srgb, var(--win) 14%, var(--surface));
+}
+
+.pair-legend__swatch--tied {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--win) 24%, var(--surface)) 0 3px,
+    color-mix(in srgb, var(--win) 6%, var(--surface)) 3px 6px
+  );
+}
+
+.pick-list__row.is-top {
+  background: color-mix(in srgb, var(--win) 14%, var(--surface));
+}
+
+.pick-list__row.is-tied {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--win) 18%, var(--surface)) 0 8px,
+    color-mix(in srgb, var(--win) 6%, var(--surface)) 8px 16px
+  );
+}
+
 .member--readonly {
   grid-template-columns: 1fr auto;
   min-height: 52px;
@@ -1535,6 +1683,34 @@ div.roster__row {
   background: none;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
+}
+
+/* The organizer's record button: the numbers plus a pencil, so it reads as editable. */
+.member__record--edit {
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 6px;
+  padding-right: 4px;
+  color: inherit;
+}
+
+.member__record--edit:hover {
+  background: var(--page);
+}
+
+.member__stats {
+  display: grid;
+  justify-items: end;
+}
+
+.member__edit {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid var(--ink-soft);
+  border-radius: 50%;
+  color: var(--ink-soft);
 }
 
 .member__rate {
@@ -1659,6 +1835,45 @@ div.roster__row {
   border-top: 1px solid var(--rule);
 }
 
+/* Each pair card is filled with its team's colour, with white text (as on the Players tab). */
+.pair-card[class*='team-'] {
+  background: var(--team);
+  color: #fff;
+  box-shadow: inset 0 0 0 1.5px var(--team-edge);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+}
+
+.pair-card[class*='team-'] + .pair-card {
+  border-top-color: rgb(255 255 255 / 0.25);
+}
+
+.pair-card[class*='team-'] .pair-card__team {
+  padding-left: 0;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+  font-size: var(--step-0);
+}
+
+.pair-card[class*='team-'] .pair-card__team svg {
+  filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.5));
+}
+
+.pair-card[class*='team-'] .pair-card__rate {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.pair-card[class*='team-'] .pair-card__short {
+  color: inherit;
+}
+
+.pair-card[class*='team-'] .btn {
+  border-color: currentColor;
+  color: inherit;
+  text-shadow: inherit;
+}
+
 .pair-card__team {
   grid-area: team;
   justify-self: start;
@@ -1681,6 +1896,17 @@ div.roster__row {
 .pair-card__names,
 .pair-card__short {
   grid-area: names;
+}
+
+.pair-card__tie {
+  grid-column: 1 / -1;
+  font-size: var(--step--1);
+  font-weight: 600;
+}
+
+.pair-card__tie .member__tie {
+  margin-left: 0;
+  margin-right: 4px;
 }
 
 .pair-card__names {
@@ -1802,21 +2028,24 @@ div.roster__row {
   gap: 8px;
   min-height: 56px;
   padding: 6px 8px;
-  border: 1.5px solid rgb(244 241 248 / 0.4);
+  border: 1.5px solid transparent;
   border-radius: 8px;
-  background: transparent;
-  color: var(--court-line);
+  background: var(--team);
+  color: #fff;
+  box-shadow: inset 0 0 0 1.5px var(--team-edge);
   text-align: left;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
 }
 
 .side__crest {
   flex: none;
-  color: var(--team);
-  filter: drop-shadow(0 0 0.5px var(--court-line));
+  color: currentColor;
+  filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.5));
 }
 
 .side__names {
   display: grid;
+  flex: 1;
   min-width: 0;
   font-size: var(--step--1);
   font-weight: 700;
@@ -1824,42 +2053,46 @@ div.roster__row {
   overflow-wrap: anywhere;
 }
 
-/* Black bat on a night court needs a light crest and edge to stay visible. */
+/* Black bat on a night court needs a light edge to stay visible. */
 .court .team-bat {
   --team-edge: rgb(244 241 248 / 0.7);
 }
 
-.court .team-bat .side__crest {
-  color: var(--court-line);
-}
-
 .side.is-winner {
-  border-color: var(--court-line);
-  background: var(--team);
-  color: var(--on-team);
+  border-color: #fff;
+  box-shadow: 0 0 0 2px var(--court), 0 0 0 3.5px #fff;
 }
 
-.side.is-winner .side__crest {
-  color: currentColor;
-  filter: none;
+.side__won {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--court);
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-shadow: none;
 }
 
 .side.is-out {
-  opacity: 0.45;
+  opacity: 0.4;
 }
 
 .side--static {
   cursor: default;
 }
 
-.side:disabled:not(.is-winner) {
-  opacity: 0.6;
-}
-
 .side--tbd {
   border-style: dashed;
+  border-color: rgb(244 241 248 / 0.4);
+  background: transparent;
+  box-shadow: none;
   color: rgb(244 241 248 / 0.75);
   font-size: var(--step--1);
+  text-shadow: none;
 }
 
 /* Toast ------------------------------------------------------------------------------- */

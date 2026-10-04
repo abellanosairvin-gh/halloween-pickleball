@@ -2,6 +2,7 @@ import { type FormEvent, useState } from 'react';
 import { useEventData } from '../data/EventData';
 import { lockedPairMessage, lockedPairPlayerIds, MAX_NAME_LENGTH, nameProblem, normalizeName } from '../domain/roster';
 import { recordOf } from '../domain/standings';
+import { GENDER_LABEL } from '../domain/teams';
 import type { Gender, Player, Skill } from '../domain/types';
 import { Dialog } from './Dialog';
 import { useToast } from './Toast';
@@ -27,6 +28,8 @@ function PlayerFormBody({ player, onClose }: { player: Player | null; onClose: (
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /** Edits wait here for "Save changes" to be confirmed. */
+  const [confirmSave, setConfirmSave] = useState(false);
 
   const locked = player ? lockedPairPlayerIds(data!.pairs).has(player.id) : false;
   const nameError = nameProblem(name, data!.players, player?.id);
@@ -34,9 +37,25 @@ function PlayerFormBody({ player, onClose }: { player: Player | null; onClose: (
   const error = submitted ? (nameError ?? missing) : null;
   const games = player ? recordOf(records, player.id).games : 0;
 
-  async function save(e: FormEvent) {
+  /** What an edit would change, as lines like "Skill: A → B". */
+  const changes = player
+    ? [
+        normalizeName(name) !== player.name && `Name: ${player.name} → ${normalizeName(name)}`,
+        gender && gender !== player.gender && `Plays with: ${GENDER_LABEL[player.gender]} → ${GENDER_LABEL[gender]}`,
+        skill && skill !== player.skill && `Skill: ${player.skill} → ${skill}`,
+      ].filter((c): c is string => Boolean(c))
+    : [];
+
+  function submit(e: FormEvent) {
     e.preventDefault();
     setSubmitted(true);
+    if (nameError || !gender || !skill) return;
+    if (!player) return void save();
+    if (changes.length === 0) return onClose();
+    setConfirmSave(true);
+  }
+
+  async function save() {
     if (nameError || !gender || !skill) return;
     setSaving(true);
     const draft = { name, gender, skill };
@@ -66,6 +85,26 @@ function PlayerFormBody({ player, onClose }: { player: Player | null; onClose: (
     }
   }
 
+  if (player && confirmSave) {
+    return (
+      <Dialog open onClose={onClose} title={`Save changes to ${player.name}?`}>
+        <ul className="change-list">
+          {changes.map((c) => (
+            <li key={c}>{c}</li>
+          ))}
+        </ul>
+        <div className="dialog__actions">
+          <button type="button" className="btn btn--quiet" onClick={() => setConfirmSave(false)}>
+            Keep editing
+          </button>
+          <button type="button" className="btn btn--primary" disabled={saving} onClick={() => void save()}>
+            Save changes
+          </button>
+        </div>
+      </Dialog>
+    );
+  }
+
   if (player && confirmDelete) {
     return (
       <Dialog open onClose={onClose} title={`Delete ${player.name}?`}>
@@ -89,7 +128,7 @@ function PlayerFormBody({ player, onClose }: { player: Player | null; onClose: (
 
   return (
     <Dialog open onClose={onClose} title={player ? `Edit ${player.name}` : 'Add a player'}>
-      <form className="player-form" onSubmit={save} noValidate>
+      <form className="player-form" onSubmit={submit} noValidate>
         <label className="field">
           <span className="field__label">Name</span>
           <input

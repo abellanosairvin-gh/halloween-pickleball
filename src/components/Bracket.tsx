@@ -34,6 +34,11 @@ export function Bracket({ gender, view }: { gender: Gender; view: BracketView })
           <span>{nameOf(pair.player1Id)}</span>
           <span>{nameOf(pair.player2Id)}</span>
         </span>
+        {won && (
+          <span className="side__won" aria-hidden="true">
+            ✓
+          </span>
+        )}
       </>
     );
     if (!canEdit) {

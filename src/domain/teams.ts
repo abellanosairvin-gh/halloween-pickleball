@@ -10,7 +10,7 @@ export const TEAMS: readonly Team[] = [
   { id: 'pumpkin', name: 'Pumpkin' },
   { id: 'witch', name: 'Witch' },
   { id: 'skull', name: 'Skull' },
-  { id: 'bat', name: 'Bat' },
+  { id: 'bat', name: 'Dracula' },
 ];
 
 export const TEAM_IDS: readonly TeamId[] = TEAMS.map((t) => t.id);

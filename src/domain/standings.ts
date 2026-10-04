@@ -73,12 +73,30 @@ export interface TeamStanding {
   record: Record;
 }
 
-/** Teams by win rate, then most wins, then the fixed team order. Teams with no games go last. */
-export function rankTeams(players: readonly Player[], records: Map<string, Record>): TeamStanding[] {
+/**
+ * Teams in podium order, every team in its own place:
+ * 1. best win rate;
+ * 2. on the same rate, more games played (10/20 beats 5/10);
+ * 3. on the very same record, whoever got there first (their latest result is older);
+ * 4. the fixed team order, only while neither team has played.
+ * Teams with no games go last.
+ */
+export function rankTeams(
+  players: readonly Player[],
+  records: Map<string, Record>,
+  results: readonly GameResult[] = [],
+): TeamStanding[] {
+  const teamOf = new Map(players.map((p) => [p.id, p.teamId]));
+  const latest = new Map<TeamId, string>();
+  for (const r of results) {
+    const team = teamOf.get(r.playerId);
+    if (team && r.createdAt > (latest.get(team) ?? '')) latest.set(team, r.createdAt);
+  }
   return TEAM_IDS.map((teamId) => ({ teamId, record: teamRecord(players, records, teamId) })).sort(
     (a, b) =>
       (b.record.rate ?? -1) - (a.record.rate ?? -1) ||
-      b.record.wins - a.record.wins ||
+      b.record.games - a.record.games ||
+      (latest.get(a.teamId) ?? '').localeCompare(latest.get(b.teamId) ?? '') ||
       TEAM_IDS.indexOf(a.teamId) - TEAM_IDS.indexOf(b.teamId),
   );
 }
@@ -110,6 +128,39 @@ export function qualifiers(
   gender: Gender,
 ): Player[] {
   return eligiblePlayers(players, records, teamId, gender).slice(0, 2);
+}
+
+export interface PairPicture {
+  /** Clearly in the team's tournament pair right now. */
+  top: Set<string>;
+  /** Level on win rate for the last spot, so the organizer has to choose who moves on. */
+  tied: Set<string>;
+}
+
+/**
+ * Who would make a team's pair for one gender right now, for the organizer's Teams tab.
+ * Only players with enough games count. If the 2nd and 3rd best share a win rate, everyone on that
+ * rate is "tied" (for example three players on 60% for the last spot, or for both spots).
+ */
+export function pairPicture(
+  players: readonly Player[],
+  records: Map<string, Record>,
+  teamId: TeamId,
+  gender: Gender,
+): PairPicture {
+  const eligible = eligiblePlayers(players, records, teamId, gender);
+  const rate = (p: Player) => recordOf(records, p.id).rate;
+  const top = new Set(eligible.slice(0, 2).map((p) => p.id));
+  const tied = new Set<string>();
+  if (eligible.length > 2 && rate(eligible[1]) === rate(eligible[2])) {
+    for (const p of eligible) {
+      if (rate(p) === rate(eligible[1])) {
+        tied.add(p.id);
+        top.delete(p.id);
+      }
+    }
+  }
+  return { top, tied };
 }
 
 /** Players tab order: women then men, A before B, then name. */

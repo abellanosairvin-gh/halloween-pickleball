@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAccess } from '../auth/Access';
 import { ConfirmDialog, Dialog } from '../components/Dialog';
+import { EditIcon } from '../components/EditIcon';
 import { Podium } from '../components/Podium';
 import { TeamCrest } from '../components/TeamCrest';
 import { useToast } from '../components/Toast';
@@ -10,6 +11,8 @@ import {
   compareByStanding,
   formatRate,
   formatRecord,
+  MIN_PAIR_GAMES,
+  pairPicture,
   rankTeams,
   recordOf,
   teamMembers,
@@ -26,7 +29,7 @@ export function TeamsPage() {
   const { data, records, run } = useEventData();
   const { canEdit } = useAccess();
   const players = data!.players;
-  const standings = rankTeams(players, records);
+  const standings = rankTeams(players, records, data!.results);
   const anyGames = standings.some((s) => s.record.games > 0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pending, setPending] = useState<{ player: Player; outcome: Outcome } | null>(null);
@@ -58,6 +61,14 @@ export function TeamsPage() {
               : 'Win rates appear here as games are played. The team with the best win rate wins the prize.'}
           </p>
         )}
+        {canEdit && anyGames && (
+          <p className="page-meta pair-legend">
+            <span className="pair-legend__swatch pair-legend__swatch--top" aria-hidden="true" /> Each team’s top 2 women
+            and men with {MIN_PAIR_GAMES}+ games, who’d make the tournament pairs.{' '}
+            <span className="pair-legend__swatch pair-legend__swatch--tied" aria-hidden="true" /> <strong>Tie</strong>:
+            level on win rate for the last spot. Choose who moves on with Change on the Tournament tab.
+          </p>
+        )}
         {canEdit && simulatedCount > 0 && (
           <p className="page-meta">
             Includes {simulatedCount} simulated {simulatedCount === 1 ? 'result' : 'results'}. Clear them before the
@@ -81,7 +92,7 @@ export function TeamsPage() {
       {anyGames && (
         <Podium
           label="Team standings by win rate"
-          places={standings.map((s, i) => ({
+          places={standings.map((s) => ({
             teamId: s.teamId,
             href: `#team-${s.teamId}`,
             title: <span className="podium__team">{teamName(s.teamId)}</span>,
@@ -91,7 +102,6 @@ export function TeamsPage() {
                 <span className="podium__record">{formatRecord(s.record)}</span>
               </>
             ),
-            rank: sharedRank(standings, i),
           }))}
         />
       )}
@@ -149,14 +159,6 @@ export function TeamsPage() {
   );
 }
 
-/** Teams with the same win rate share a place, since the prize goes by win rate. */
-function sharedRank(standings: ReturnType<typeof rankTeams>, index: number): number {
-  let i = index;
-  const rate = standings[index].record.rate;
-  while (i > 0 && rate !== null && standings[i - 1].record.rate === rate) i -= 1;
-  return i + 1;
-}
-
 function TeamPanel({
   teamId,
   players,
@@ -205,6 +207,7 @@ function TeamPanel({
         (['F', 'M'] as Gender[]).map((gender) => {
           const group = members.filter((p) => p.gender === gender);
           if (group.length === 0) return null;
+          const pair = canEdit ? pairPicture(players, records, teamId, gender) : null;
           return (
             <div key={gender} className="team__group">
               <h3 className="team__group-title">{GENDER_LABEL[gender]}</h3>
@@ -214,23 +217,34 @@ function TeamPanel({
                   return (
                     <li
                       key={p.id}
-                      className={`member ${canEdit ? '' : 'member--readonly'} ${p.id === meId ? 'is-me' : ''}`}
+                      className={`member ${canEdit ? '' : 'member--readonly'} ${
+                        p.id === meId ? 'is-me' : ''
+                      } ${pair?.top.has(p.id) ? 'is-top' : ''} ${pair?.tied.has(p.id) ? 'is-tied' : ''}`}
                     >
                       <span className="member__who">
                         <span className="member__line">
-                          <span className="member__name">{p.name}</span>
+                          <span className="member__name">
+                            {p.name}
+                            {pair?.top.has(p.id) && <span className="visually-hidden"> (in the tournament pair)</span>}
+                            {pair?.tied.has(p.id) && <span className="member__tie">Tie</span>}
+                          </span>
                           <ResultHistory outcomes={history.get(p.id) ?? []} />
                         </span>
                       </span>
                       {canEdit ? (
                         <button
                           type="button"
-                          className="member__record"
+                          className="member__record member__record--edit"
                           onClick={() => onEditRecord(p.id)}
-                          aria-label={`${p.name}: ${r.wins} wins, ${r.losses} losses. Correct results`}
+                          aria-label={`${p.name}: ${r.wins} wins, ${r.losses} losses. Edit results`}
                         >
-                          <span className="member__rate">{formatRate(r.rate)}</span>
-                          <span className="member__wl">{formatRecord(r)}</span>
+                          <span className="member__stats">
+                            <span className="member__rate">{formatRate(r.rate)}</span>
+                            <span className="member__wl">{formatRecord(r)}</span>
+                          </span>
+                          <span className="member__edit">
+                            <EditIcon size={12} />
+                          </span>
                         </button>
                       ) : (
                         <span className="member__record" aria-label={`${r.wins} wins, ${r.losses} losses`}>
@@ -403,17 +417,17 @@ function RecordSheet({
         {r.wins} {r.wins === 1 ? 'win' : 'wins'} and {r.losses} {r.losses === 1 ? 'loss' : 'losses'}
         {r.rate !== null && ` for a ${formatRate(r.rate)} win rate`}. Remove a result entered by mistake.
       </p>
-      <div className="dialog__actions dialog__actions--stack">
+      <div className="dialog__actions dialog__actions--pair">
         <button type="button" className="btn" disabled={r.wins === 0} onClick={() => removeLatest('W')}>
           Remove a win
         </button>
         <button type="button" className="btn" disabled={r.losses === 0} onClick={() => removeLatest('L')}>
           Remove a loss
         </button>
-        <button type="button" className="btn btn--quiet" onClick={onClose}>
-          Done
-        </button>
       </div>
+      <button type="button" className="btn btn--quiet btn--block" onClick={onClose}>
+        Done
+      </button>
     </Dialog>
   );
 }

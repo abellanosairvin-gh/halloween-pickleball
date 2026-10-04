@@ -9,10 +9,11 @@ export interface Reveal {
   team: TeamId | null;
 }
 
-const SHOW_FOR_MS = 2600;
+/** Long enough for the spins (2.4s) and a couple of seconds to read the team. */
+const SHOW_FOR_MS = 4600;
 
 /**
- * The one big moment: a card flips from the player's name to their new team.
+ * The one big moment: a card spins three times from the player's name and lands on their new team.
  * Tap anywhere or press Escape to close early. Reused by the future QR check-in page.
  */
 export function CheckInReveal({ reveal, onDone }: { reveal: Reveal | null; onDone: () => void }) {

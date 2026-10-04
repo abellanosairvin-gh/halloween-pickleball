@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { DEMO_PASSWORD } from '../data/localRepo';
 import { auth, isDemo } from '../lib/backend';
 import { useAuth } from './Auth';
+import { EVENT_NAME } from '../lib/event';
 
 export function LoginPage() {
   const state = useAuth();
@@ -32,7 +33,7 @@ export function LoginPage() {
   return (
     <main className="login">
       <form className="login__card" onSubmit={submit} noValidate>
-        <h1 className="login__title">Irvin’s Halloween Pickleball Party</h1>
+        <h1 className="login__title">{EVENT_NAME}</h1>
         <p className="login__lede">Organizer sign in</p>
 
         {/* Lets password managers save the shared organizer password under a name. */}

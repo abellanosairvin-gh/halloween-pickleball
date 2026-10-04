@@ -1,45 +1,38 @@
+import { TEAM_IDS } from '../domain/teams';
+import { EVENT_NAME } from '../lib/event';
 import { partyUrl, partyUrlIsLocal } from '../lib/partyUrl';
 import { Dialog } from './Dialog';
 import { QrCode } from './QrCode';
-import { useToast } from './Toast';
+import { TeamCrest } from './TeamCrest';
 
-/** Shows the party page's QR code so the organizer can put it on screen, copy the link or print a poster. */
+/** The party page's QR code, styled for showing on the organizer's screen for guests to scan. */
 export function QrDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const toast = useToast();
   const url = partyUrl();
 
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      toast.show('Link copied');
-    } catch {
-      toast.show('Copying isn’t allowed here. Select the link and copy it instead.', { tone: 'error' });
-    }
-  };
-
   return (
-    <Dialog open={open} onClose={onClose} title="Party page QR code" className="dialog--qr">
-      <p className="dialog__text">
-        Guests scan this to check themselves in and follow the teams and tournament. No sign-in needed.
-      </p>
-      <QrCode value={url} label={`QR code for ${url}`} className="qr--dialog" />
-      <p className="qr-link">{url}</p>
+    <Dialog open={open} onClose={onClose} title={EVENT_NAME} className="dialog--qr">
+      <div className="qr-sheet__crests" aria-hidden="true">
+        {TEAM_IDS.map((t) => (
+          <span key={t} className={`qr-sheet__crest team-${t}`}>
+            <TeamCrest team={t} size={26} />
+          </span>
+        ))}
+      </div>
+      <div className="qr-sheet__frame">
+        <QrCode value={url} label="QR code for the party page" className="qr--dialog" />
+      </div>
+      <p className="qr-sheet__lede">Scan to check in and find out your team</p>
+      <p className="qr-sheet__sub">Then follow the teams and the tournament live. No sign-in needed.</p>
       {partyUrlIsLocal() && (
-        <p className="form-error">
-          This link points to this computer, so guests’ phones can’t open it. Deploy the site, or set VITE_PUBLIC_URL to
-          its address, before printing.
+        <p className="qr-sheet__warning" role="alert">
+          This code points to this computer, so guests’ phones can’t open it. Open the deployed site to show it to
+          guests.
         </p>
       )}
       <div className="dialog__actions">
-        <button type="button" className="btn btn--quiet" onClick={() => void copy()}>
-          Copy link
+        <button type="button" className="btn btn--block qr-sheet__close" onClick={onClose}>
+          Close
         </button>
-        <a className="btn btn--quiet" href={url} target="_blank" rel="noreferrer">
-          Open party page
-        </a>
-        <a className="btn btn--primary" href="/qr" target="_blank" rel="noreferrer">
-          Print poster
-        </a>
       </div>
     </Dialog>
   );

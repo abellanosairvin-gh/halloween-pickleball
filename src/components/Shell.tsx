@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useEventData } from '../data/EventData';
+import { EVENT_NAME } from '../lib/event';
 
 export const TAB_ICONS = {
   players: 'M8 7a3 3 0 1 0 6 0 3 3 0 0 0-6 0zM4 20c0-3.9 3.1-7 7-7s7 3.1 7 7z',
@@ -23,7 +24,7 @@ export function Shell({ tabs, actions, notice }: { tabs: Tab[]; actions?: ReactN
     <div className="app">
       <header className="topbar">
         <div className="topbar__inner">
-          <span className="wordmark">Irvin’s Halloween Pickleball Party</span>
+          <span className="wordmark">{EVENT_NAME}</span>
           {actions && <div className="topbar__actions">{actions}</div>}
         </div>
       </header>
