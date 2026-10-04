@@ -29,7 +29,7 @@ export function Bracket({ gender, view }: { gender: Gender; view: BracketView })
     const className = `side team-${pair.teamId} ${won ? 'is-winner' : ''} ${decided && !won ? 'is-out' : ''}`;
     const names = (
       <>
-        <TeamCrest team={pair.teamId} size={18} className="side__crest" />
+        <TeamCrest team={pair.teamId} size={26} className="side__crest" />
         <span className="side__names">
           <span>{nameOf(pair.player1Id)}</span>
           <span>{nameOf(pair.player2Id)}</span>

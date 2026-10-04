@@ -123,8 +123,8 @@ function GenderBracket({ gender, hiddenOnMobile }: { gender: Gender; hiddenOnMob
               return (
                 <li key={t.id} className={`pair-card team-${t.id}`}>
                   <span className={`pair-card__team team-${t.id}`}>
-                    <TeamCrest team={t.id} size={18} />
-                    {t.name}
+                    <TeamCrest team={t.id} size={40} />
+                    Team {t.name}
                   </span>
                   {pair.length === 2 ? (
                     <span className="pair-card__names">
