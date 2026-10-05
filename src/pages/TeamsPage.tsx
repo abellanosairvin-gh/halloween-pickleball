@@ -185,7 +185,6 @@ function TeamPanel({
   }, [data]);
   const members = useMemo(() => teamMembers(players, teamId).sort(compareByStanding(records)), [players, teamId, records]);
   const record = teamRecord(players, records, teamId);
-  const women = members.filter((p) => p.gender === 'F').length;
 
   return (
     <section id={`team-${teamId}`} className="team" aria-labelledby={`team-title-${teamId}`}>
@@ -196,7 +195,7 @@ function TeamPanel({
             {teamName(teamId)}
           </h2>
           <p className="team__makeup">
-            {women} {women === 1 ? 'woman' : 'women'}, {members.length - women} {members.length - women === 1 ? 'man' : 'men'}
+            {members.length} {members.length === 1 ? 'player' : 'players'}
           </p>
         </div>
         <p className="team__score">
