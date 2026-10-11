@@ -107,16 +107,60 @@ describe('brackets', () => {
     for (const p of await players()) await checkIn(p.id);
   });
 
-  it('locks four valid pairs and plays through the final and the battle for 3rd', async () => {
-    await db.query('select set_bracket_pairs($1, $2)', ['F', JSON.stringify(await lockedPairs('F'))]);
-    await db.query(`select set_match_winner('F', 'semi1', 1::smallint)`);
-    await db.query(`select set_match_winner('F', 'semi2', 2::smallint)`);
-    await db.query(`select set_match_winner('F', 'final', 2::smallint)`);
-    await db.query(`select set_match_winner('F', 'third', 0::smallint)`);
-    const { rows } = await db.query<{ match: string; winner_slot: number }>(
-      `select match, winner_slot from bracket_matches where gender = 'F' order by match`,
-    );
-    expect(rows).toEqual([
+  const lock = async (bracket: string, pairs: unknown) =>
+    db.query('select set_bracket_pairs($1, $2)', [bracket, JSON.stringify(pairs)]);
+  const win = async (bracket: string, match: string, slot: number | null) =>
+    db.query('select set_match_winner($1, $2, $3::smallint)', [bracket, match, slot]);
+  const results = async (bracket: string) =>
+    (
+      await db.query<{ match: string; winner_slot: number }>(
+        'select match, winner_slot from bracket_matches where bracket = $1 order by match',
+        [bracket],
+      )
+    ).rows;
+
+  /** Locks and plays both first rounds (slots 0 and 3 win), returning the women and men who went through. */
+  async function playFirstRounds() {
+    for (const g of ['F', 'M']) {
+      await lock(g, await lockedPairs(g));
+      await win(g, 'semi1', 0);
+      await win(g, 'semi2', 3);
+    }
+    const through = async (g: string) =>
+      (await db.query<{ player_id: string }>('select player_id from first_round_winners where gender = $1', [g])).rows.map(
+        (r) => r.player_id,
+      );
+    return { women: await through('F'), men: await through('M') };
+  }
+
+  const mixedPairs = (women: string[], men: string[]) =>
+    women.map((w, slot) => ({ slot, player1_id: w, player2_id: men[slot] }));
+
+  it('plays one round in the women’s and men’s brackets, with no final', async () => {
+    await lock('F', await lockedPairs('F'));
+    await win('F', 'semi1', 1);
+    await win('F', 'semi2', 2);
+    await expect(win('F', 'final', 1)).rejects.toThrow('play one round');
+    await expect(win('F', 'third', 0)).rejects.toThrow('play one round');
+    expect(await results('F')).toEqual([
+      { match: 'semi1', winner_slot: 1 },
+      { match: 'semi2', winner_slot: 2 },
+    ]);
+  });
+
+  it('draws mixed doubles from the first-round winners and plays through the final and the battle for 3rd', async () => {
+    const { women, men } = await playFirstRounds();
+    expect(women).toHaveLength(4);
+    expect(men).toHaveLength(4);
+    await lock('X', mixedPairs(women, men));
+    const { rows } = await db.query<{ team_id: string | null }>(`select team_id from bracket_pairs where bracket = 'X'`);
+    expect(rows.map((r) => r.team_id)).toEqual([null, null, null, null]);
+
+    await win('X', 'semi1', 1);
+    await win('X', 'semi2', 2);
+    await win('X', 'final', 2);
+    await win('X', 'third', 0);
+    expect(await results('X')).toEqual([
       { match: 'final', winner_slot: 2 },
       { match: 'semi1', winner_slot: 1 },
       { match: 'semi2', winner_slot: 2 },
@@ -124,65 +168,92 @@ describe('brackets', () => {
     ]);
   });
 
+  it('only draws mixed doubles from the women and men who won their first-round match', async () => {
+    await lock('F', await lockedPairs('F'));
+    await win('F', 'semi1', 0);
+    const strangers = () => Array.from({ length: 4 }, () => crypto.randomUUID());
+    await expect(lock('X', mixedPairs(strangers(), strangers()))).rejects.toThrow('Finish the women’s and men’s first round');
+    await db.query(`select reset_bracket('F')`);
+
+    const { women, men } = await playFirstRounds();
+    await expect(lock('X', mixedPairs(women, men).slice(0, 3))).rejects.toThrow('exactly 4 pairs');
+    // Woman and man the wrong way round.
+    await expect(lock('X', mixedPairs(men, women))).rejects.toThrow('a woman and a man who won');
+    // The same woman twice.
+    await expect(lock('X', mixedPairs([women[0], ...women.slice(0, 3)], men))).rejects.toThrow('a woman and a man who won');
+    // A woman whose pair lost.
+    const loser = (await db.query<{ player1_id: string }>(`select player1_id from bracket_pairs where bracket = 'F' and slot = 1`))
+      .rows[0].player1_id;
+    await expect(lock('X', mixedPairs([loser, ...women.slice(1)], men))).rejects.toThrow('a woman and a man who won');
+    await lock('X', mixedPairs(women, men));
+  });
+
+  it('fixes the first round once mixed doubles is drawn, until mixed doubles is reset', async () => {
+    const { women, men } = await playFirstRounds();
+    await lock('X', mixedPairs(women, men));
+    await expect(win('F', 'semi1', 1)).rejects.toThrow('already drawn');
+    await expect(win('M', 'semi2', null)).rejects.toThrow('already drawn');
+    await expect(db.query(`select reset_bracket('M')`)).rejects.toThrow('Reset mixed doubles first');
+
+    await win('X', 'semi1', 0);
+    await db.query(`select reset_bracket('X')`);
+    expect(await results('X')).toEqual([]);
+    await win('F', 'semi1', 1);
+    await db.query(`select reset_bracket('M')`);
+  });
+
   it('only lets the semifinal losers play for 3rd, and drops a stale result when a semi changes', async () => {
-    await db.query('select set_bracket_pairs($1, $2)', ['M', JSON.stringify(await lockedPairs('M'))]);
-    await db.query(`select set_match_winner('M', 'semi1', 0::smallint)`);
-    await expect(db.query(`select set_match_winner('M', 'third', 1::smallint)`)).rejects.toThrow('Finish both');
-    await db.query(`select set_match_winner('M', 'semi2', 3::smallint)`);
-    await expect(db.query(`select set_match_winner('M', 'third', 0::smallint)`)).rejects.toThrow('battle for 3rd');
-    await db.query(`select set_match_winner('M', 'third', 2::smallint)`);
-    await db.query(`select set_match_winner('M', 'semi1', 0::smallint)`);
-    const kept = await db.query(`select 1 from bracket_matches where gender = 'M' and match = 'third'`);
-    expect(kept.rows).toHaveLength(1);
-    await db.query(`select set_match_winner('M', 'semi2', 2::smallint)`);
-    const dropped = await db.query(`select 1 from bracket_matches where gender = 'M' and match = 'third'`);
-    expect(dropped.rows).toHaveLength(0);
+    const { women, men } = await playFirstRounds();
+    await lock('X', mixedPairs(women, men));
+    await win('X', 'semi1', 0);
+    await expect(win('X', 'third', 1)).rejects.toThrow('Finish both');
+    await win('X', 'semi2', 3);
+    await expect(win('X', 'third', 0)).rejects.toThrow('battle for 3rd');
+    await win('X', 'third', 2);
+    await win('X', 'semi1', 0);
+    expect((await results('X')).some((r) => r.match === 'third')).toBe(true);
+    await win('X', 'semi2', 2);
+    expect((await results('X')).some((r) => r.match === 'third')).toBe(false);
+  });
+
+  it('validates winners and drops a stale final when a semifinal changes', async () => {
+    const { women, men } = await playFirstRounds();
+    await lock('X', mixedPairs(women, men));
+    await expect(win('X', 'semi1', 2)).rejects.toThrow('not in this match');
+    await win('X', 'semi1', 0);
+    await expect(win('X', 'final', 0)).rejects.toThrow('Finish both');
+    await win('X', 'semi2', 3);
+    await win('X', 'final', 0);
+    await win('X', 'semi1', 1);
+    expect((await results('X')).some((r) => r.match === 'final')).toBe(false);
   });
 
   it('rejects pairs that mix teams or genders', async () => {
     const pairs = await lockedPairs('F');
     const man = (await players()).find((p) => p.gender === 'M' && p.team_id === pairs[0].team_id)!;
     pairs[0].player2_id = man.id;
-    await expect(db.query('select set_bracket_pairs($1, $2)', ['F', JSON.stringify(pairs)])).rejects.toThrow(
-      'checked-in women',
-    );
+    await expect(lock('F', pairs)).rejects.toThrow('checked-in women');
   });
 
   it('rejects a pair with a player under 4 recorded games', async () => {
     const pairs = await lockedPairs('F', 3);
-    await expect(db.query('select set_bracket_pairs($1, $2)', ['F', JSON.stringify(pairs)])).rejects.toThrow(
-      'at least 4 recorded games',
-    );
+    await expect(lock('F', pairs)).rejects.toThrow('at least 4 recorded games');
     await recordGames(pairs[0].player1_id, 1);
-    await expect(db.query('select set_bracket_pairs($1, $2)', ['F', JSON.stringify(pairs)])).rejects.toThrow(
-      'at least 4 recorded games',
-    );
+    await expect(lock('F', pairs)).rejects.toThrow('at least 4 recorded games');
     for (const p of pairs) {
       await recordGames(p.player1_id, 1);
       await recordGames(p.player2_id, 1);
     }
-    await db.query('select set_bracket_pairs($1, $2)', ['F', JSON.stringify(pairs)]);
+    await lock('F', pairs);
   });
 
   it('refuses a redraw once a result is in, and allows it after a reset', async () => {
-    const pairs = JSON.stringify(await lockedPairs('M'));
-    await db.query('select set_bracket_pairs($1, $2)', ['M', pairs]);
-    await db.query(`select set_match_winner('M', 'semi1', 0::smallint)`);
-    await expect(db.query('select set_bracket_pairs($1, $2)', ['M', pairs])).rejects.toThrow('Reset it');
+    const pairs = await lockedPairs('M');
+    await lock('M', pairs);
+    await win('M', 'semi1', 0);
+    await expect(lock('M', pairs)).rejects.toThrow('Reset it');
     await db.query(`select reset_bracket('M')`);
-    await db.query('select set_bracket_pairs($1, $2)', ['M', pairs]);
-  });
-
-  it('validates winners and drops a stale final when a semifinal changes', async () => {
-    await db.query('select set_bracket_pairs($1, $2)', ['F', JSON.stringify(await lockedPairs('F'))]);
-    await expect(db.query(`select set_match_winner('F', 'semi1', 2::smallint)`)).rejects.toThrow('not in this match');
-    await db.query(`select set_match_winner('F', 'semi1', 0::smallint)`);
-    await expect(db.query(`select set_match_winner('F', 'final', 0::smallint)`)).rejects.toThrow('Finish both');
-    await db.query(`select set_match_winner('F', 'semi2', 3::smallint)`);
-    await db.query(`select set_match_winner('F', 'final', 0::smallint)`);
-    await db.query(`select set_match_winner('F', 'semi1', 1::smallint)`);
-    const { rows } = await db.query(`select 1 from bracket_matches where gender = 'F' and match = 'final'`);
-    expect(rows).toHaveLength(0);
+    await lock('M', pairs);
   });
 });
 
@@ -226,19 +297,5 @@ describe('editing the roster', () => {
     await db.query(`select reset_bracket('F')`);
     await db.query('update players set team_id = $2 where id = $1', [locked, otherTeam]);
     await db.query('delete from players where id = $1', [locked]);
-  });
-});
-
-describe('simulated results', () => {
-  it('are flagged, count as games, and clear without touching hand-entered results', async () => {
-    const [p] = await players();
-    await db.query(`insert into results (player_id, outcome) values ($1, 'W')`, [p.id]);
-    await db.query(`insert into results (player_id, outcome, simulated) values ($1, 'L', true), ($1, 'L', true)`, [p.id]);
-    const stats = async () =>
-      (await db.query<{ games: number }>('select count(*)::int as games from results where player_id = $1', [p.id])).rows[0]
-        .games;
-    expect(await stats()).toBe(3);
-    await db.query('delete from results where simulated');
-    expect(await stats()).toBe(1);
   });
 });

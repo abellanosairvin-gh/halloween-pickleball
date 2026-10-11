@@ -1,6 +1,5 @@
 import type { PlayerDraft } from '../domain/roster';
-import type { ResultEntry } from '../domain/simulate';
-import type { BracketPair, Gender, GameResult, MatchKey, Outcome, Player, Snapshot, TableName, TeamId } from '../domain/types';
+import type { BracketId, BracketPair, GameResult, MatchKey, Outcome, Player, Snapshot, TableName, TeamId } from '../domain/types';
 
 /** Everything the screens read and write. Implemented by the API (Neon) and by the local demo store. */
 export interface Repo {
@@ -20,14 +19,10 @@ export interface Repo {
 
   addResult(playerId: string, outcome: Outcome): Promise<GameResult>;
   deleteResult(resultId: string): Promise<void>;
-  /** Adds the entries as simulated results. Resolves to how many were added. */
-  addSimulatedResults(entries: ResultEntry[]): Promise<number>;
-  /** Removes every simulated result, leaving hand-entered ones. Resolves to how many were removed. */
-  clearSimulatedResults(): Promise<number>;
 
-  setBracketPairs(gender: Gender, pairs: BracketPair[]): Promise<void>;
-  setMatchWinner(gender: Gender, match: MatchKey, winnerSlot: number | null): Promise<void>;
-  resetBracket(gender: Gender): Promise<void>;
+  setBracketPairs(bracket: BracketId, pairs: BracketPair[]): Promise<void>;
+  setMatchWinner(bracket: BracketId, match: MatchKey, winnerSlot: number | null): Promise<void>;
+  resetBracket(bracket: BracketId): Promise<void>;
 }
 
 /** The organizer's sign-in. There's one shared organizer password, so there are no user accounts. */

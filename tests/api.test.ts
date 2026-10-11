@@ -99,8 +99,7 @@ describe('guests (party page)', () => {
       ['addResult', { playerId: player.id, outcome: 'W' }],
       ['deletePlayer', { playerId: player.id }],
       ['addPlayer', { name: 'Intruder', gender: 'M', skill: 'A' }],
-      ['clearSimulatedResults', {}],
-      ['resetBracket', { gender: 'F' }],
+      ['resetBracket', { bracket: 'F' }],
     ];
     for (const [action, args] of attempts) {
       const response = await postOrganizer(request('/api/organizer', { method: 'POST', body: { action, args } }), deps);
@@ -169,23 +168,10 @@ describe('organizer actions', () => {
     const added = await organizer('addResult', { playerId: player.id, outcome: 'W' });
     expect(added.status).toBe(200);
     const { result } = await added.json();
-    expect(result).toMatchObject({ playerId: player.id, outcome: 'W', simulated: false });
+    expect(result).toMatchObject({ playerId: player.id, outcome: 'W' });
     expect(typeof result.createdAt).toBe('string');
     await organizer('deleteResult', { resultId: result.id });
     expect((await state()).results).toEqual([]);
-  });
-
-  it('add and clear simulated results in one go', async () => {
-    const [a, b] = (await state()).players;
-    const entries = [
-      { playerId: a.id, outcome: 'W' },
-      { playerId: a.id, outcome: 'L' },
-      { playerId: b.id, outcome: 'W' },
-    ];
-    expect((await (await organizer('addSimulatedResults', { entries })).json()).result).toBe(3);
-    await organizer('addResult', { playerId: a.id, outcome: 'L' });
-    expect((await (await organizer('clearSimulatedResults')).json()).result).toBe(3);
-    expect((await state()).results).toHaveLength(1);
   });
 
   it('add, edit and delete players, with clear messages for duplicates', async () => {
@@ -200,28 +186,52 @@ describe('organizer actions', () => {
     expect((await state()).players).toHaveLength(40);
   });
 
-  it('runs the brackets, including the battle for 3rd', async () => {
+  it('runs the first rounds, then mixed doubles through the battle for 3rd', async () => {
     for (const p of (await state()).players) {
       await postCheckIn(request('/api/check-in', { method: 'POST', body: { playerId: p.id } }), deps);
     }
     const players = (await state()).players;
-    const pairs = (['pumpkin', 'witch', 'skull', 'bat'] as const).map((teamId, slot) => {
-      const [x, y] = players.filter((p) => p.teamId === teamId && p.gender === 'F');
-      return { gender: 'F', slot, teamId, player1Id: x.id, player2Id: y.id };
-    });
-    const tooFewGames = await organizer('setBracketPairs', { gender: 'F', pairs });
+    const teamPairs = (gender: 'F' | 'M') =>
+      (['pumpkin', 'witch', 'skull', 'bat'] as const).map((teamId, slot) => {
+        const [x, y] = players.filter((p) => p.teamId === teamId && p.gender === gender);
+        return { bracket: gender, slot, teamId, player1Id: x.id, player2Id: y.id };
+      });
+    const women = teamPairs('F');
+    const men = teamPairs('M');
+    const tooFewGames = await organizer('setBracketPairs', { bracket: 'F', pairs: women });
     expect(tooFewGames.status).toBe(400);
     expect((await tooFewGames.json()).error).toMatch('at least 4 recorded games');
 
-    const entries = pairs.flatMap((p) =>
-      [p.player1Id, p.player2Id].flatMap((id) => Array.from({ length: 4 }, () => ({ playerId: id, outcome: 'W' }))),
-    );
-    await organizer('addSimulatedResults', { entries });
-    expect((await organizer('setBracketPairs', { gender: 'F', pairs })).status).toBe(200);
+    for (const p of [...women, ...men]) {
+      for (const id of [p.player1Id, p.player2Id]) {
+        for (let i = 0; i < 4; i += 1) await organizer('addResult', { playerId: id, outcome: 'W' });
+      }
+    }
+    expect((await organizer('setBracketPairs', { bracket: 'F', pairs: women })).status).toBe(200);
+    expect((await organizer('setBracketPairs', { bracket: 'M', pairs: men })).status).toBe(200);
 
     // A player in a locked pair can't be deleted.
-    const locked = await organizer('deletePlayer', { playerId: pairs[0].player1Id });
+    const locked = await organizer('deletePlayer', { playerId: women[0].player1Id });
     expect(locked.status).toBe(409);
+
+    for (const bracket of ['F', 'M']) {
+      expect((await organizer('setMatchWinner', { bracket, match: 'semi1', winnerSlot: 0 })).status).toBe(200);
+      expect((await organizer('setMatchWinner', { bracket, match: 'semi2', winnerSlot: 3 })).status).toBe(200);
+    }
+    const noFinal = await organizer('setMatchWinner', { bracket: 'F', match: 'final', winnerSlot: 0 });
+    expect(noFinal.status).toBe(400);
+    expect((await noFinal.json()).error).toMatch('play one round');
+
+    // Winners: slot 0 and slot 3 of each gender. Each woman partners a man.
+    const through = (pairs: typeof women) => [pairs[0], pairs[3]].flatMap((p) => [p.player1Id, p.player2Id]);
+    const mixed = through(women).map((w, slot) => ({ bracket: 'X', slot, teamId: null, player1Id: w, player2Id: through(men)[slot] }));
+    expect((await organizer('setBracketPairs', { bracket: 'X', pairs: mixed })).status).toBe(200);
+    const drawn = await state();
+    expect(drawn.pairs.filter((p) => p.bracket === 'X').map((p) => p.teamId)).toEqual([null, null, null, null]);
+
+    const frozen = await organizer('setMatchWinner', { bracket: 'M', match: 'semi1', winnerSlot: 1 });
+    expect(frozen.status).toBe(400);
+    expect((await frozen.json()).error).toMatch('Reset mixed doubles');
 
     for (const [match, winnerSlot] of [
       ['semi1', 0],
@@ -229,11 +239,15 @@ describe('organizer actions', () => {
       ['final', 3],
       ['third', 1],
     ] as const) {
-      expect((await organizer('setMatchWinner', { gender: 'F', match, winnerSlot })).status, match).toBe(200);
+      expect((await organizer('setMatchWinner', { bracket: 'X', match, winnerSlot })).status, match).toBe(200);
     }
-    expect((await state()).matches).toHaveLength(4);
-    expect((await organizer('setMatchWinner', { gender: 'F', match: 'third', winnerSlot: 3 })).status).toBe(400);
-    await organizer('resetBracket', { gender: 'F' });
+    expect((await state()).matches.filter((m) => m.bracket === 'X')).toHaveLength(4);
+    expect((await organizer('setMatchWinner', { bracket: 'X', match: 'third', winnerSlot: 3 })).status).toBe(400);
+
+    expect((await organizer('resetBracket', { bracket: 'F' })).status).toBe(400);
+    await organizer('resetBracket', { bracket: 'X' });
+    await organizer('resetBracket', { bracket: 'F' });
+    await organizer('resetBracket', { bracket: 'M' });
     const after = await state();
     expect(after.pairs).toEqual([]);
     expect(after.matches).toEqual([]);

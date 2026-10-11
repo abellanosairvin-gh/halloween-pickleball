@@ -96,12 +96,10 @@ export function createApiRepo(): Repo {
 
     addResult: (playerId, outcome) => act('addResult', { playerId, outcome }),
     deleteResult: (resultId) => act('deleteResult', { resultId }),
-    addSimulatedResults: (entries) => act('addSimulatedResults', { entries }),
-    clearSimulatedResults: () => act('clearSimulatedResults'),
 
-    setBracketPairs: (gender, pairs) => act('setBracketPairs', { gender, pairs }),
-    setMatchWinner: (gender, match, winnerSlot) => act('setMatchWinner', { gender, match, winnerSlot }),
-    resetBracket: (gender) => act('resetBracket', { gender }),
+    setBracketPairs: (bracket, pairs) => act('setBracketPairs', { bracket, pairs }),
+    setMatchWinner: (bracket, match, winnerSlot) => act('setMatchWinner', { bracket, match, winnerSlot }),
+    resetBracket: (bracket) => act('resetBracket', { bracket }),
   };
 }
 

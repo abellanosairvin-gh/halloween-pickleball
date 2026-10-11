@@ -1,4 +1,5 @@
 import type {
+  BracketId,
   BracketMatch,
   BracketPair,
   GameResult,
@@ -34,31 +35,30 @@ const toResult = (r: Row): GameResult => ({
   playerId: String(r.player_id),
   outcome: r.outcome as Outcome,
   createdAt: iso(r.created_at) ?? '',
-  simulated: Boolean(r.simulated),
 });
 
 const toPair = (r: Row): BracketPair => ({
-  gender: r.gender as Gender,
+  bracket: r.bracket as BracketId,
   slot: Number(r.slot),
-  teamId: r.team_id as TeamId,
+  teamId: (r.team_id as TeamId | null) ?? null,
   player1Id: String(r.player1_id),
   player2Id: String(r.player2_id),
 });
 
 const toMatch = (r: Row): BracketMatch => ({
-  gender: r.gender as Gender,
+  bracket: r.bracket as BracketId,
   match: r.match as MatchKey,
   winnerSlot: Number(r.winner_slot),
 });
 
 const PLAYER_COLUMNS = 'id, name, gender, skill, checked_in_at, team_id';
-const RESULT_COLUMNS = 'id, player_id, outcome, created_at, simulated';
+const RESULT_COLUMNS = 'id, player_id, outcome, created_at';
 
 const READ: { [T in TableName]: (q: Query) => Promise<Snapshot[T]> } = {
   players: async (q) => (await q(`select ${PLAYER_COLUMNS} from players order by name`)).map(toPlayer),
   results: async (q) => (await q(`select ${RESULT_COLUMNS} from results order by created_at, id`)).map(toResult),
-  pairs: async (q) => (await q('select gender, slot, team_id, player1_id, player2_id from bracket_pairs')).map(toPair),
-  matches: async (q) => (await q('select gender, match, winner_slot from bracket_matches')).map(toMatch),
+  pairs: async (q) => (await q('select bracket, slot, team_id, player1_id, player2_id from bracket_pairs')).map(toPair),
+  matches: async (q) => (await q('select bracket, match, winner_slot from bracket_matches')).map(toMatch),
 };
 
 export async function readVersions(q: Query): Promise<Versions> {
@@ -98,6 +98,7 @@ function oneOf<T extends string>(value: unknown, field: string, allowed: readonl
 }
 
 const GENDERS = ['F', 'M'] as const;
+const BRACKETS = ['F', 'M', 'X'] as const;
 const SKILLS = ['A', 'B'] as const;
 const OUTCOMES = ['W', 'L'] as const;
 const MATCHES = ['semi1', 'semi2', 'final', 'third'] as const;
@@ -162,30 +163,6 @@ export const organizerActions: Record<string, (q: Query, a: Args) => Promise<unk
     return null;
   },
 
-  async addSimulatedResults(q, a) {
-    const entries = a.entries;
-    if (!Array.isArray(entries) || entries.length > 5000) throw new BadRequest('Unexpected simulated results.');
-    if (entries.length === 0) return 0;
-    const ids = entries.map((e: Args) => text(e.playerId, 'playerId'));
-    const outcomes = entries.map((e: Args) => oneOf(e.outcome, 'outcome', OUTCOMES));
-    const rows = await q(
-      `with added as (
-         insert into results (player_id, outcome, simulated)
-         select player_id, outcome, true from unnest($1::uuid[], $2::text[]) as x(player_id, outcome)
-         returning 1
-       ) select count(*)::int as n from added`,
-      [ids, outcomes],
-    );
-    return Number(rows[0].n);
-  },
-
-  async clearSimulatedResults(q) {
-    const rows = await q(
-      'with removed as (delete from results where simulated returning 1) select count(*)::int as n from removed',
-    );
-    return Number(rows[0].n);
-  },
-
   async setBracketPairs(q, a) {
     if (!Array.isArray(a.pairs)) throw new BadRequest('Missing pairs.');
     const pairs = a.pairs.map((p: Args) => ({
@@ -194,7 +171,7 @@ export const organizerActions: Record<string, (q: Query, a: Args) => Promise<unk
       player1_id: p.player1Id,
       player2_id: p.player2Id,
     }));
-    await q('select set_bracket_pairs($1, $2::jsonb)', [oneOf(a.gender, 'gender', GENDERS), JSON.stringify(pairs)]);
+    await q('select set_bracket_pairs($1, $2::jsonb)', [oneOf(a.bracket, 'bracket', BRACKETS), JSON.stringify(pairs)]);
     return null;
   },
 
@@ -202,7 +179,7 @@ export const organizerActions: Record<string, (q: Query, a: Args) => Promise<unk
     const slot = a.winnerSlot === null ? null : Number(a.winnerSlot);
     if (slot !== null && !Number.isInteger(slot)) throw new BadRequest('Unknown winnerSlot.');
     await q('select set_match_winner($1, $2, $3::smallint)', [
-      oneOf(a.gender, 'gender', GENDERS),
+      oneOf(a.bracket, 'bracket', BRACKETS),
       oneOf(a.match, 'match', MATCHES),
       slot,
     ]);
@@ -210,7 +187,7 @@ export const organizerActions: Record<string, (q: Query, a: Args) => Promise<unk
   },
 
   async resetBracket(q, a) {
-    await q('select reset_bracket($1)', [oneOf(a.gender, 'gender', GENDERS)]);
+    await q('select reset_bracket($1)', [oneOf(a.bracket, 'bracket', BRACKETS)]);
     return null;
   },
 };

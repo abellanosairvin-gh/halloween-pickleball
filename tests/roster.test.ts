@@ -28,8 +28,8 @@ describe('player names', () => {
 describe('locked pair players', () => {
   it('collects both players of every locked pair', () => {
     const ids = lockedPairPlayerIds([
-      { gender: 'F', slot: 0, teamId: 'witch', player1Id: 'a', player2Id: 'b' },
-      { gender: 'M', slot: 0, teamId: 'bat', player1Id: 'c', player2Id: 'd' },
+      { bracket: 'F', slot: 0, teamId: 'witch', player1Id: 'a', player2Id: 'b' },
+      { bracket: 'M', slot: 0, teamId: 'bat', player1Id: 'c', player2Id: 'd' },
     ]);
     expect([...ids].sort()).toEqual(['a', 'b', 'c', 'd']);
   });

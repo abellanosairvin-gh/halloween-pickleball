@@ -17,27 +17,34 @@ export interface GameResult {
   playerId: string;
   outcome: Outcome;
   createdAt: string;
-  /** Created by "Simulate 5 games" rather than entered by hand. */
-  simulated: boolean;
 }
 
-/** One of the four fixed doubles pairs in a gender's bracket. `slot` comes from the random draw. */
+/**
+ * 'F' and 'M' are the women's and men's first round of doubles. 'X' is mixed doubles, which the
+ * women and men who win that round are drawn into.
+ */
+export type BracketId = Gender | 'X';
+
+/** One of the four pairs in a bracket. `slot` comes from the random draw. */
 export interface BracketPair {
-  gender: Gender;
+  bracket: BracketId;
   slot: number;
-  teamId: TeamId;
+  /** The team of a women's or men's pair. null for a mixed pair, whose players can be on different teams. */
+  teamId: TeamId | null;
+  /** In a mixed pair, player1 is the woman and player2 the man. */
   player1Id: string;
   player2Id: string;
 }
 
 /**
  * semi1 is slot 0 vs slot 1, semi2 is slot 2 vs slot 3, final is the two semi winners and
- * third (the battle for 3rd) is the two semi losers.
+ * third (the battle for 3rd) is the two semi losers. The women's and men's brackets only play
+ * semi1 and semi2, their single round.
  */
 export type MatchKey = 'semi1' | 'semi2' | 'final' | 'third';
 
 export interface BracketMatch {
-  gender: Gender;
+  bracket: BracketId;
   match: MatchKey;
   winnerSlot: number;
 }

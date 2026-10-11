@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAccess } from '../auth/Access';
-import { ConfirmDialog, Dialog } from '../components/Dialog';
+import { Dialog } from '../components/Dialog';
 import { EditIcon } from '../components/EditIcon';
 import { TeamCrest } from '../components/TeamCrest';
 import { useToast } from '../components/Toast';
@@ -17,7 +17,6 @@ import {
   teamMembers,
   teamRecord,
 } from '../domain/standings';
-import { SIMULATED_GAMES, simulatedResults } from '../domain/simulate';
 import { GENDER_LABEL, TEAMS, teamName } from '../domain/teams';
 import type { Gender, Outcome, Player, TeamId } from '../domain/types';
 
@@ -27,7 +26,7 @@ const ORDINAL = ['1st', '2nd', '3rd', '4th'];
 const HISTORY_SHOWN = 30;
 
 export function TeamsPage() {
-  const { data, records, run } = useEventData();
+  const { data, records } = useEventData();
   const { canEdit } = useAccess();
   const players = data!.players;
   const standings = rankTeams(players, records, data!.results);
@@ -35,21 +34,6 @@ export function TeamsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pending, setPending] = useState<{ player: Player; outcome: Outcome } | null>(null);
   const [removal, setRemoval] = useState<Removal | null>(null);
-  const [confirmSimulate, setConfirmSimulate] = useState(false);
-  const [confirmClear, setConfirmClear] = useState(false);
-  const toast = useToast();
-
-  const checkedIn = players.filter((p) => p.teamId).length;
-  const simulatedCount = data!.results.filter((r) => r.simulated).length;
-
-  const simulate = async () => {
-    const added = await run(['results'], (r) => r.addSimulatedResults(simulatedResults(players)));
-    if (added) toast.show(`Added ${added} simulated results`);
-  };
-  const clearSimulated = async () => {
-    const removed = await run(['results'], (r) => r.clearSimulatedResults());
-    if (removed !== undefined) toast.show(`Cleared ${removed} simulated results`);
-  };
 
   return (
     <>
@@ -69,24 +53,6 @@ export function TeamsPage() {
             <span className="pair-legend__swatch pair-legend__swatch--tied" aria-hidden="true" /> <strong>Tie</strong>:
             level on win rate for the last spot. Choose who moves on with Change on the Tournament tab.
           </p>
-        )}
-        {canEdit && simulatedCount > 0 && (
-          <p className="page-meta">
-            Includes {simulatedCount} simulated {simulatedCount === 1 ? 'result' : 'results'}. Clear them before the
-            real games start.
-          </p>
-        )}
-        {canEdit && (
-        <div className="page-actions">
-          <button type="button" className="btn btn--small" disabled={checkedIn === 0} onClick={() => setConfirmSimulate(true)}>
-            Simulate {SIMULATED_GAMES} games
-          </button>
-          {simulatedCount > 0 && (
-            <button type="button" className="btn btn--small btn--danger-quiet" onClick={() => setConfirmClear(true)}>
-              Clear simulated results
-            </button>
-          )}
-        </div>
         )}
       </header>
 
@@ -142,25 +108,6 @@ export function TeamsPage() {
       />
       <ConfirmResult pending={pending} onClose={() => setPending(null)} onUndo={setRemoval} />
       <ConfirmRemoval removal={removal} onClose={() => setRemoval(null)} />
-      <ConfirmDialog
-        open={confirmSimulate}
-        title={`Simulate ${SIMULATED_GAMES} games each?`}
-        message={`This adds ${SIMULATED_GAMES} random wins or losses for each of the ${checkedIn} checked-in players, ${
-          checkedIn * SIMULATED_GAMES
-        } results in all. They’re marked as simulated, so you can clear them later without touching real results.`}
-        confirmLabel="Simulate games"
-        tone="primary"
-        onCancel={() => setConfirmSimulate(false)}
-        onConfirm={() => void simulate()}
-      />
-      <ConfirmDialog
-        open={confirmClear}
-        title="Clear simulated results?"
-        message={`This removes all ${simulatedCount} simulated results. Results you entered with +W and +L stay.`}
-        confirmLabel="Clear simulated results"
-        onCancel={() => setConfirmClear(false)}
-        onConfirm={() => void clearSimulated()}
-      />
     </>
   );
 }
@@ -332,7 +279,6 @@ function ConfirmResult({
       playerId: player.id,
       outcome,
       createdAt: new Date().toISOString(),
-      simulated: false,
     });
     const saved = await run(['results'], (repo) => repo.addResult(player.id, outcome));
     if (saved) {

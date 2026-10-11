@@ -1,8 +1,16 @@
 import { pickTeam } from '../domain/assign';
-import { applyWinner, validWinners, buildBracket } from '../domain/bracket';
+import {
+  applyWinner,
+  buildBracket,
+  FIRST_ROUND,
+  firstRoundWinners,
+  isMixedDrawn,
+  MIXED,
+  validWinners,
+} from '../domain/bracket';
 import { lockedPairMessage, lockedPairPlayerIds, nameProblem, normalizeName } from '../domain/roster';
 import { isPairEligible, MIN_PAIR_GAMES, playerRecords } from '../domain/standings';
-import type { Player, Snapshot, TableName } from '../domain/types';
+import type { BracketId, BracketMatch, BracketPair, Gender, Player, Snapshot, TableName } from '../domain/types';
 import type { AuthClient, Repo } from './repo';
 import { SEED_PLAYERS } from './seedPlayers';
 
@@ -69,7 +77,14 @@ export function createLocalRepo(): Repo {
     if (memory) return memory;
     const raw = safeGet(STORE_KEY);
     memory = raw ? (JSON.parse(raw) as Snapshot) : seedSnapshot();
-    memory.results = memory.results.map((r) => ({ ...r, simulated: r.simulated ?? false }));
+    // Stores saved before mixed doubles named each bracket by gender and played a final in it.
+    type Saved<T> = T & { gender?: Gender };
+    const named = <T extends { bracket: BracketId }>({ gender, ...rest }: Saved<T>) =>
+      ({ ...rest, bracket: rest.bracket ?? gender }) as T;
+    memory.pairs = memory.pairs.map((p) => named<BracketPair>(p));
+    memory.matches = memory.matches
+      .map((m) => named<BracketMatch>(m))
+      .filter((m) => m.bracket === MIXED || FIRST_ROUND.includes(m.match));
     return memory;
   }
 
@@ -163,7 +178,7 @@ export function createLocalRepo(): Repo {
 
     async addResult(playerId, outcome) {
       const s = clone();
-      const result = { id: crypto.randomUUID(), playerId, outcome, createdAt: new Date().toISOString(), simulated: false };
+      const result = { id: crypto.randomUUID(), playerId, outcome, createdAt: new Date().toISOString() };
       s.results.push(result);
       write(s, ['results']);
       return result;
@@ -175,58 +190,67 @@ export function createLocalRepo(): Repo {
       write(s, ['results']);
     },
 
-    async addSimulatedResults(entries) {
+    async setBracketPairs(bracket, pairs) {
       const s = clone();
-      const createdAt = new Date().toISOString();
-      s.results.push(...entries.map((e) => ({ id: crypto.randomUUID(), ...e, createdAt, simulated: true })));
-      write(s, ['results']);
-      return entries.length;
-    },
-
-    async clearSimulatedResults() {
-      const s = clone();
-      const before = s.results.length;
-      s.results = s.results.filter((r) => !r.simulated);
-      write(s, ['results']);
-      return before - s.results.length;
-    },
-
-    async setBracketPairs(gender, pairs) {
-      const s = clone();
-      if (s.matches.some((m) => m.gender === gender)) {
+      if (s.matches.some((m) => m.bracket === bracket)) {
         throw new Error('Results are already recorded in this bracket. Reset it to change the pairs.');
       }
       if (pairs.length !== 4) throw new Error('A bracket needs exactly 4 pairs.');
-      const valid = pairs.every((pair) =>
-        [pair.player1Id, pair.player2Id].every((id) => {
-          const p = s.players.find((x) => x.id === id);
-          return p && p.teamId === pair.teamId && p.gender === gender;
-        }),
-      );
-      if (!valid) throw new Error('Every pair must be two checked-in players from the same team.');
-      const records = playerRecords(s.results);
-      if (!pairs.every((pair) => isPairEligible(records, pair.player1Id) && isPairEligible(records, pair.player2Id))) {
-        throw new Error(`Every player in a pair needs at least ${MIN_PAIR_GAMES} recorded games.`);
+      if (bracket === MIXED) {
+        if (s.matches.filter((m) => m.bracket !== MIXED).length !== 4) {
+          throw new Error('Finish the women’s and men’s first round before drawing mixed doubles.');
+        }
+        const sameSet = (picked: string[], winners: string[]) =>
+          picked.length === winners.length && new Set(picked).size === picked.length && picked.every((id) => winners.includes(id));
+        if (
+          !sameSet(pairs.map((p) => p.player1Id), firstRoundWinners('F', s.pairs, s.matches)) ||
+          !sameSet(pairs.map((p) => p.player2Id), firstRoundWinners('M', s.pairs, s.matches))
+        ) {
+          throw new Error('Every mixed pair must be a woman and a man who won their first-round match.');
+        }
+      } else {
+        const valid = pairs.every((pair) =>
+          [pair.player1Id, pair.player2Id].every((id) => {
+            const p = s.players.find((x) => x.id === id);
+            return p && p.teamId === pair.teamId && p.gender === bracket;
+          }),
+        );
+        if (!valid) throw new Error('Every pair must be two checked-in players from the same team.');
+        const records = playerRecords(s.results);
+        if (!pairs.every((pair) => isPairEligible(records, pair.player1Id) && isPairEligible(records, pair.player2Id))) {
+          throw new Error(`Every player in a pair needs at least ${MIN_PAIR_GAMES} recorded games.`);
+        }
       }
-      s.pairs = [...s.pairs.filter((p) => p.gender !== gender), ...pairs];
+      s.pairs = [...s.pairs.filter((p) => p.bracket !== bracket), ...pairs];
       write(s, ['pairs']);
     },
 
-    async setMatchWinner(gender, match, winnerSlot) {
+    async setMatchWinner(bracket, match, winnerSlot) {
       const s = clone();
-      const view = buildBracket(gender, s.pairs, s.matches);
+      const view = buildBracket(bracket, s.pairs, s.matches);
       if (!view.locked) throw new Error('Lock the pairs before recording results.');
+      if (bracket !== MIXED) {
+        if (!FIRST_ROUND.includes(match)) {
+          throw new Error('The women’s and men’s brackets play one round. The final is in mixed doubles.');
+        }
+        if (isMixedDrawn(s.pairs)) {
+          throw new Error('Mixed doubles is already drawn from these results. Reset mixed doubles to change them.');
+        }
+      }
       if (winnerSlot !== null && !validWinners(view, match).includes(winnerSlot)) {
         throw new Error('That pair is not in this match.');
       }
-      s.matches = [...s.matches.filter((m) => m.gender !== gender), ...applyWinner(gender, s.matches, match, winnerSlot)];
+      s.matches = [...s.matches.filter((m) => m.bracket !== bracket), ...applyWinner(bracket, s.matches, match, winnerSlot)];
       write(s, ['matches']);
     },
 
-    async resetBracket(gender) {
+    async resetBracket(bracket) {
       const s = clone();
-      s.pairs = s.pairs.filter((p) => p.gender !== gender);
-      s.matches = s.matches.filter((m) => m.gender !== gender);
+      if (bracket !== MIXED && isMixedDrawn(s.pairs)) {
+        throw new Error('Reset mixed doubles first. Its pairs come from this bracket.');
+      }
+      s.pairs = s.pairs.filter((p) => p.bracket !== bracket);
+      s.matches = s.matches.filter((m) => m.bracket !== bracket);
       write(s, ['pairs', 'matches']);
     },
   };

@@ -20,7 +20,6 @@ const result = (playerId: string, outcome: Outcome): GameResult => ({
   playerId,
   outcome,
   createdAt: '',
-  simulated: false,
 });
 const games = (playerId: string, wins: number, losses: number) => [
   ...Array.from({ length: wins }, () => result(playerId, 'W')),
@@ -138,7 +137,6 @@ describe('podium places', () => {
     playerId,
     outcome,
     createdAt,
-    simulated: false,
   });
 
   it('breaks a win-rate tie by games played, so no two teams share a place', () => {

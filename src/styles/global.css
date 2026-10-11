@@ -379,12 +379,6 @@ a {
   color: var(--ink-soft);
 }
 
-.page-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .page-meta strong {
   color: var(--ink);
 }
@@ -1412,10 +1406,27 @@ a {
   text-decoration: none;
 }
 
+.podium__crests {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+}
+
 .podium__crest {
   margin-bottom: 2px;
   color: var(--team);
   filter: drop-shadow(0 0 1px var(--team-edge));
+}
+
+/* A mixed pair's two crests share the width of one place. */
+.podium__place.is-two-teams .podium__crest {
+  width: 32px;
+  height: 32px;
+}
+
+.podium__place.is-two-teams .podium__step {
+  background: linear-gradient(90deg, var(--team-a) 50%, var(--team-b) 50%);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
 }
 
 .podium__title {
@@ -1485,6 +1496,16 @@ a {
   .podium__crest {
     width: 68px;
     height: 68px;
+  }
+
+  .podium__place.is-two-teams .podium__crest {
+    width: 52px;
+    height: 52px;
+  }
+
+  .podium__place.is-two-teams:first-child .podium__crest {
+    width: 64px;
+    height: 64px;
   }
 
   .podium__place[data-rank='1'] .podium__step {
@@ -1933,6 +1954,77 @@ a {
   .brackets {
     grid-template-columns: 1fr 1fr;
   }
+
+  /* Mixed doubles, the tournament proper, spans the page below the women's and men's first round. */
+  .bracket-section--wide {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Who's through to mixed doubles, before the draw. */
+.through {
+  display: grid;
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .through {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.through__group {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.through__title {
+  font-size: var(--step--1);
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.through__list {
+  display: grid;
+  gap: 4px;
+}
+
+.through__player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--team);
+  color: #fff;
+  box-shadow: inset 0 0 0 1.5px var(--team-edge);
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+}
+
+.through__player svg {
+  flex: none;
+  filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.35));
+}
+
+.through__player.is-open {
+  border: 1.5px dashed var(--rule);
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink-soft);
+  font-size: var(--step--1);
+  font-weight: 600;
+  text-shadow: none;
+}
+
+/* A mixed pair from two teams: half in each team's colour. In a bracket the woman's half is on top,
+   behind her name; on a podium step the halves sit side by side. */
+.is-two-teams {
+  --team: linear-gradient(var(--team-a) 50%, var(--team-b) 50%);
+  --on-team: #fff;
+  --team-edge: transparent;
 }
 
 .bracket-intro,
@@ -2122,6 +2214,12 @@ a {
   flex: 1;
 }
 
+/* A women's or men's first round: just its two matches, one under the other. */
+.court--round {
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
 /* The battle for 3rd runs across the court below the main bracket, its two sides side by side. */
 .court__third {
   grid-column: 1 / -1;
@@ -2185,6 +2283,14 @@ a {
   font-weight: 700;
   line-height: 1.3;
   overflow-wrap: anywhere;
+}
+
+/* A mixed pair: each name with its own team's crest. */
+.side__player {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 /* Black Dracula team on a night court needs a light edge to stay visible. */
