@@ -70,8 +70,13 @@ export function isMixedDrawn(pairs: readonly BracketPair[]): boolean {
 
 export interface MatchView {
   key: MatchKey;
-  /** Slot numbers of the two sides; null while the side is still to be decided. */
+  /**
+   * Slot numbers of the two sides; null while the side is still to be decided. A result is recorded
+   * against these, so in the mixed final and battle for 3rd a side is known by its woman's slot.
+   */
   sides: [number | null, number | null];
+  /** Who plays each side; null while the side is still to be decided. */
+  lineups: [BracketPair | null, BracketPair | null];
   winnerSlot: number | null;
 }
 
@@ -84,8 +89,8 @@ export interface BracketView {
   final: MatchView;
   /** The battle for 3rd, between the two semifinal losers. Mixed doubles only. */
   third: MatchView;
-  /** Slots finishing 1st to 4th; null until the deciding match is played. */
-  placings: [number | null, number | null, number | null, number | null];
+  /** The lineups finishing 1st to 4th; null until the deciding match is played. */
+  placings: [BracketPair | null, BracketPair | null, BracketPair | null, BracketPair | null];
 }
 
 /** The slot that lost a semifinal, given its winner. semi1 is 0 v 1 and semi2 is 2 v 3. */
@@ -100,30 +105,50 @@ function placementSides(semi1: number | null, semi2: number | null) {
   };
 }
 
-/** The other side of a decided match. */
-const otherSide = (match: MatchView) =>
-  match.winnerSlot === null ? null : (match.sides.find((s) => s !== match.winnerSlot) ?? null);
+/** The lineup on the winning or losing side of a match; null until it's decided. */
+function lineupOf(match: MatchView, won: boolean): BracketPair | null {
+  if (match.winnerSlot === null) return null;
+  const winner = match.sides.indexOf(match.winnerSlot);
+  return match.lineups[won ? winner : 1 - winner];
+}
 
 export function buildBracket(bracket: BracketId, pairs: readonly BracketPair[], matches: readonly BracketMatch[]): BracketView {
   const own = pairs.filter((p) => p.bracket === bracket);
   const pairsBySlot = new Map(own.map((p) => [p.slot, p]));
   const winner = (key: MatchKey) => matches.find((m) => m.bracket === bracket && m.match === key)?.winnerSlot ?? null;
-  const semi1 = winner('semi1');
-  const semi2 = winner('semi2');
-  const sides = placementSides(semi1, semi2);
-  const final: MatchView = { key: 'final', sides: sides.final, winnerSlot: winner('final') };
-  const third: MatchView = { key: 'third', sides: sides.third, winnerSlot: winner('third') };
+  const pairAt = (slot: number | null) => (slot === null ? null : (pairsBySlot.get(slot) ?? null));
+
+  /** A semifinal's sides play as drawn. */
+  const semi = (key: 'semi1' | 'semi2', sides: [number, number]): MatchView => ({
+    key,
+    sides,
+    lineups: [pairAt(sides[0]), pairAt(sides[1])],
+    winnerSlot: winner(key),
+  });
+
+  /**
+   * The final and the battle for 3rd rotate partners: the two pairs meeting there swap men, so each
+   * woman partners the man from the other semifinal. Each lineup keeps its woman's slot.
+   */
+  const placement = (key: 'final' | 'third', sides: [number | null, number | null]): MatchView => {
+    const [a, b] = [pairAt(sides[0]), pairAt(sides[1])];
+    const lineups: MatchView['lineups'] =
+      a && b ? [{ ...a, player2Id: b.player2Id }, { ...b, player2Id: a.player2Id }] : [null, null];
+    return { key, sides, lineups, winnerSlot: winner(key) };
+  };
+
+  const semis: BracketView['semis'] = [semi('semi1', [0, 1]), semi('semi2', [2, 3])];
+  const sides = placementSides(semis[0].winnerSlot, semis[1].winnerSlot);
+  const final = placement('final', sides.final);
+  const third = placement('third', sides.third);
   return {
     bracket,
     locked: own.length === 4,
     pairsBySlot,
-    semis: [
-      { key: 'semi1', sides: [0, 1], winnerSlot: semi1 },
-      { key: 'semi2', sides: [2, 3], winnerSlot: semi2 },
-    ],
+    semis,
     final,
     third,
-    placings: [final.winnerSlot, otherSide(final), third.winnerSlot, otherSide(third)],
+    placings: [lineupOf(final, true), lineupOf(final, false), lineupOf(third, true), lineupOf(third, false)],
   };
 }
 

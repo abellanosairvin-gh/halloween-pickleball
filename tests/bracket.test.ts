@@ -11,7 +11,7 @@ import {
   type PairDraft,
   validWinners,
 } from '../src/domain/bracket';
-import type { BracketMatch } from '../src/domain/types';
+import type { BracketMatch, BracketPair } from '../src/domain/types';
 import { seededRandom } from './fixtures';
 
 const drafts: PairDraft[] = [
@@ -114,6 +114,9 @@ describe('mixed doubles draw', () => {
 
 describe('advancing mixed doubles', () => {
   const pairs = drawMixedPairs(women, men, seededRandom(3));
+  const at = (slot: number) => pairs.find((p) => p.slot === slot)!;
+  /** Each placed lineup by its woman's slot. */
+  const slotsOf = (placings: (BracketPair | null)[]) => placings.map((p) => p?.slot ?? null);
 
   it('sends semi winners to the final and crowns the final winner', () => {
     let matches: BracketMatch[] = [];
@@ -124,7 +127,7 @@ describe('advancing mixed doubles', () => {
     expect(view.final.sides).toEqual([1, 2]);
     expect(validWinners(view, 'final')).toEqual([1, 2]);
     matches = applyWinner(MIXED, matches, 'final', 2);
-    expect(buildBracket(MIXED, pairs, matches).placings).toEqual([2, 1, null, null]);
+    expect(slotsOf(buildBracket(MIXED, pairs, matches).placings)).toEqual([2, 1, null, null]);
   });
 
   it('sends semi losers to the battle for 3rd and fills the podium', () => {
@@ -136,9 +139,35 @@ describe('advancing mixed doubles', () => {
     expect(view.third.sides).toEqual([0, 3]);
     expect(validWinners(view, 'third')).toEqual([0, 3]);
     matches = applyWinner(MIXED, matches, 'third', 3);
-    expect(buildBracket(MIXED, pairs, matches).placings).toEqual([null, null, 3, 0]);
+    expect(slotsOf(buildBracket(MIXED, pairs, matches).placings)).toEqual([null, null, 3, 0]);
     matches = applyWinner(MIXED, matches, 'final', 1);
-    expect(buildBracket(MIXED, pairs, matches).placings).toEqual([1, 2, 3, 0]);
+    expect(slotsOf(buildBracket(MIXED, pairs, matches).placings)).toEqual([1, 2, 3, 0]);
+  });
+
+  it('rotates partners for the final and the battle for 3rd', () => {
+    let matches: BracketMatch[] = [];
+    matches = applyWinner(MIXED, matches, 'semi1', 1);
+    matches = applyWinner(MIXED, matches, 'semi2', 2);
+    let view = buildBracket(MIXED, pairs, matches);
+    expect(view.semis[0].lineups).toEqual([at(0), at(1)]);
+    const lineup = (p: BracketPair | null) => p && [p.player1Id, p.player2Id];
+    expect(view.final.lineups.map(lineup)).toEqual([
+      [at(1).player1Id, at(2).player2Id],
+      [at(2).player1Id, at(1).player2Id],
+    ]);
+    expect(view.third.lineups.map(lineup)).toEqual([
+      [at(0).player1Id, at(3).player2Id],
+      [at(3).player1Id, at(0).player2Id],
+    ]);
+    matches = applyWinner(MIXED, matches, 'final', 2);
+    matches = applyWinner(MIXED, matches, 'third', 0);
+    view = buildBracket(MIXED, pairs, matches);
+    expect(view.placings.map(lineup)).toEqual([
+      [at(2).player1Id, at(1).player2Id],
+      [at(1).player1Id, at(2).player2Id],
+      [at(0).player1Id, at(3).player2Id],
+      [at(3).player1Id, at(0).player2Id],
+    ]);
   });
 
   it('drops a battle for 3rd whose winner no longer lost a semifinal', () => {

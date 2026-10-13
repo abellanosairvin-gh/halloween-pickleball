@@ -45,7 +45,7 @@ export function Bracket({ view, frozen = false }: { view: BracketView; frozen?: 
 
   const renderSide = (match: MatchView, side: 0 | 1) => {
     const slot = match.sides[side];
-    const pair = slot === null ? undefined : view.pairsBySlot.get(slot);
+    const pair = match.lineups[side];
     if (!pair || slot === null) {
       return (
         <div className="side side--tbd">
@@ -158,13 +158,16 @@ export function Bracket({ view, frozen = false }: { view: BracketView; frozen?: 
           {renderMatch(view.third)}
         </div>
       </div>
-      {canEdit && <p className="bracket-note">Tap the pair that won each match. Tap again to clear a result.</p>}
+      <p className="bracket-note">
+        Partners rotate after the semifinals: the pairs meeting in the final swap partners, and so do the pairs in
+        the battle for 3rd.
+        {canEdit && ' Tap the pair that won each match. Tap again to clear a result.'}
+      </p>
       {decided && (
         <div role="status">
           <Podium
             label="Mixed doubles final standings"
-            places={view.placings.map((slot) => {
-              const pair = slot === null ? undefined : view.pairsBySlot.get(slot);
+            places={view.placings.map((pair) => {
               if (!pair) return null;
               const teams = teamsOf(pair);
               return {
