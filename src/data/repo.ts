@@ -1,5 +1,6 @@
 import type { PlayerDraft } from '../domain/roster';
 import type {
+  BallotStatus,
   BracketId,
   BracketPair,
   CostumeEntrant,
@@ -36,13 +37,18 @@ export interface Repo {
   setMatchWinner(bracket: BracketId, match: MatchKey, winnerSlot: number | null): Promise<void>;
   resetBracket(bracket: BracketId): Promise<void>;
 
-  /** Best in Costume. A voter is a player id, or the entrant id of a guest who isn't playing. Open to guests. */
-  castVotes(voterId: string, femaleId: string | null, maleId: string | null): Promise<void>;
+  /**
+   * Best in Costume. A voter is a player id, or the entrant id of a guest who isn't playing. Open to guests.
+   * Pass the ballot's token to fill in an award the ballot lost. Resolves to the ballot's token.
+   */
+  castVotes(voterId: string, femaleId: string | null, maleId: string | null, token: string | null): Promise<string>;
+  /** The ballot a phone cast, by its token; null once the organizer has cleared it. */
+  ballotStatus(token: string): Promise<BallotStatus | null>;
   addCostumePlayer(playerId: string): Promise<CostumeEntrant>;
   addCostumeGuest(name: string, gender: Gender): Promise<CostumeEntrant>;
   /** Also deletes the votes they received, and the votes they cast if they're a guest. */
   removeCostumeEntrant(entrantId: string): Promise<void>;
-  /** Clears a voter's votes so they can vote again. */
+  /** Clears a voter's ballot and votes so they can vote again. */
   clearCostumeVotes(voterId: string): Promise<void>;
   /** Opens or closes voting. Opening needs at least one woman and one man in the line-up. */
   setCostumeVoting(open: boolean): Promise<void>;

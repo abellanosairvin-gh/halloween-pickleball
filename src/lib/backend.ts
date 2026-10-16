@@ -8,5 +8,7 @@ import type { AuthClient, Repo } from '../data/repo';
  */
 export const isDemo = !__HAS_DATABASE__;
 
-export const repo: Repo = isDemo ? createLocalRepo() : createApiRepo();
-export const auth: AuthClient = isDemo ? createLocalAuth() : createApiAuth();
+const apiAuth = isDemo ? null : createApiAuth();
+export const auth: AuthClient = apiAuth ?? createLocalAuth();
+// When the organizer's session lapses, reads quietly turn into a guest's (no costume votes), so sign them out.
+export const repo: Repo = apiAuth ? createApiRepo(apiAuth.sessionEnded) : createLocalRepo();

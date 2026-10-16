@@ -31,12 +31,10 @@ export function eligibleVoters(players: readonly Player[], entrants: readonly Co
   ].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export const votedIds = (votes: readonly CostumeVote[]) => new Set(votes.map((v) => v.voterId));
-
-/** Votes per entrant. Votes with no entrant (a guest's redacted view) are not counted. */
-export function tally(votes: readonly CostumeVote[]): Map<string, number> {
+/** Votes per entrant in one award. A vote only counts in the award it was cast in, even if its person later moves. */
+export function tally(votes: readonly CostumeVote[], gender: Gender): Map<string, number> {
   const counts = new Map<string, number>();
-  for (const v of votes) if (v.entrantId) counts.set(v.entrantId, (counts.get(v.entrantId) ?? 0) + 1);
+  for (const v of votes) if (v.gender === gender) counts.set(v.entrantId, (counts.get(v.entrantId) ?? 0) + 1);
   return counts;
 }
 
@@ -56,7 +54,7 @@ export function standing(
   votes: readonly CostumeVote[],
   picks: readonly CostumePick[],
 ): Standing {
-  const counts = tally(votes);
+  const counts = tally(votes, gender);
   const ranked = lineUp(gender, entrants, players)
     .map((entrant) => ({ entrant, votes: counts.get(entrant.id) ?? 0 }))
     .sort((a, b) => b.votes - a.votes);

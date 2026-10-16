@@ -1,8 +1,8 @@
 import { normalizeName } from '../domain/roster';
-import type { Snapshot, TableName, TeamId } from '../domain/types';
+import { type BallotStatus, type Snapshot, TABLE_NAMES, type TableName, type TeamId } from '../domain/types';
 import type { AuthClient, Repo } from './repo';
 
-const TABLES: TableName[] = ['players', 'results', 'pairs', 'matches', 'entrants', 'votes', 'picks', 'voting'];
+const TABLES = TABLE_NAMES;
 type Versions = Record<TableName, number>;
 
 /** How often an open page checks for changes made elsewhere. Paused while the page is hidden. */
@@ -26,7 +26,8 @@ async function call<T>(path: string, init?: { method?: string; body?: unknown })
   return data as T;
 }
 
-export function createApiRepo(): Repo {
+/** `onNotOrganizer` runs whenever the server answers a read as a guest: the organizer's session may have ended. */
+export function createApiRepo(onNotOrganizer: () => void = () => {}): Repo {
   /** Change counters as of the data this page holds. */
   const known: Partial<Versions> = {};
   const remember = (versions: Partial<Versions>) => {
@@ -37,9 +38,10 @@ export function createApiRepo(): Repo {
   };
 
   async function fetchTables(tables: TableName[]): Promise<Partial<Snapshot>> {
-    const { versions, data } = await call<{ versions: Versions; data: Partial<Snapshot> }>(
+    const { versions, data, organizer } = await call<{ versions: Versions; data: Partial<Snapshot>; organizer: boolean }>(
       `/api/state?tables=${tables.join(',')}`,
     );
+    if (!organizer) onNotOrganizer();
     remember(Object.fromEntries(tables.map((t) => [t, versions[t]])));
     return data;
   }
@@ -101,8 +103,12 @@ export function createApiRepo(): Repo {
     setMatchWinner: (bracket, match, winnerSlot) => act('setMatchWinner', { bracket, match, winnerSlot }),
     resetBracket: (bracket) => act('resetBracket', { bracket }),
 
-    async castVotes(voterId, femaleId, maleId) {
-      await call('/api/vote', { method: 'POST', body: { voterId, femaleId, maleId } });
+    async castVotes(voterId, femaleId, maleId, token) {
+      return (await call<{ token: string }>('/api/vote', { method: 'POST', body: { voterId, femaleId, maleId, token } }))
+        .token;
+    },
+    async ballotStatus(token) {
+      return (await call<{ ballot: BallotStatus | null }>('/api/ballot', { method: 'POST', body: { token } })).ballot;
     },
     addCostumePlayer: (playerId) => act('addCostumePlayer', { playerId }),
     addCostumeGuest: (name, gender) => act('addCostumeGuest', { name: normalizeName(name), gender }),
@@ -113,12 +119,21 @@ export function createApiRepo(): Repo {
   };
 }
 
-export function createApiAuth(): AuthClient {
+export function createApiAuth(): AuthClient & { sessionEnded: () => void } {
   const listeners = new Set<(signedIn: boolean) => void>();
-  const emit = (signedIn: boolean) => listeners.forEach((l) => l(signedIn));
+  let signedIn = false;
+  const emit = (value: boolean) => {
+    signedIn = value;
+    listeners.forEach((l) => l(value));
+  };
   return {
     async isSignedIn() {
-      return (await call<{ signedIn: boolean }>('/api/session')).signedIn;
+      signedIn = (await call<{ signedIn: boolean }>('/api/session')).signedIn;
+      return signedIn;
+    },
+    /** A read came back as a guest's while signed in: the session expired or was signed out in another tab. */
+    sessionEnded() {
+      if (signedIn) emit(false);
     },
     async signIn(password) {
       await call('/api/session', { method: 'POST', body: { password } });

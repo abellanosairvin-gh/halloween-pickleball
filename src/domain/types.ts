@@ -60,14 +60,14 @@ export interface CostumeEntrant {
 }
 
 /** One vote for one award. A voter is a player id, or the entrant id of a guest who isn't playing. */
+/** One vote for one award. Only the organizer's session receives these; guests get an empty list. */
 export interface CostumeVote {
   voterId: string;
   gender: Gender;
-  /** Who got the vote. Only the organizer sees it; guests get null, so they only learn who has voted. */
-  entrantId: string | null;
+  entrantId: string;
 }
 
-/** The organizer's pick when the most votes for an award are tied. */
+/** The organizer's pick when the most votes for an award are tied. Organizer only, like votes. */
 export interface CostumePick {
   gender: Gender;
   entrantId: string;
@@ -76,6 +76,14 @@ export interface CostumePick {
 /** Voting stays closed until the organizer opens it, once the line-up is complete. */
 export interface CostumeVoting {
   open: boolean;
+  /** True once voting has been opened and then closed again (as opposed to not opened yet). */
+  closed: boolean;
+}
+
+/** What the phone that cast a ballot can learn about it with its token: who voted, and in which awards. */
+export interface BallotStatus {
+  voterId: string;
+  genders: Gender[];
 }
 
 export interface Snapshot {
@@ -87,6 +95,22 @@ export interface Snapshot {
   votes: CostumeVote[];
   picks: CostumePick[];
   voting: CostumeVoting;
+  /** Everyone who has voted: a player id, or the entrant id of a guest who isn't playing. Public. */
+  ballots: string[];
 }
 
 export type TableName = keyof Snapshot;
+
+/** Every table, for loading and refreshing everything. The Record makes leaving one out a type error. */
+const TABLE_SET: Record<TableName, true> = {
+  players: true,
+  results: true,
+  pairs: true,
+  matches: true,
+  entrants: true,
+  votes: true,
+  picks: true,
+  voting: true,
+  ballots: true,
+};
+export const TABLE_NAMES = Object.keys(TABLE_SET) as TableName[];

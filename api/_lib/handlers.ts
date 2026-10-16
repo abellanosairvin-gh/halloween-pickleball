@@ -1,5 +1,5 @@
 import type { TableName } from '../../src/domain/types';
-import { BadRequest, castVotes, checkIn, organizerActions, readState, readVersions, TABLES } from './data.js';
+import { BadRequest, ballotStatus, castVotes, checkIn, organizerActions, readState, readVersions, TABLES } from './data.js';
 import type { Query } from './db.js';
 import { checkPassword, createSessionToken, isOrganizer, type ServerEnv, sessionCookie } from './session.js';
 
@@ -25,7 +25,16 @@ export function errorResponse(error: unknown): Response {
   if (error instanceof BadRequest) return fail(400, error.message);
   const e = (error ?? {}) as DbError;
   const about = `${e.message ?? ''} ${e.detail ?? ''} ${e.constraint ?? ''}`;
-  if (e.code === '23505' && /costume_votes_once/.test(about)) return fail(409, 'That name has already voted.');
+  if (e.code === '23505' && /costume_votes_once|costume_ballots_once/.test(about)) {
+    return fail(409, 'That name has already voted.');
+  }
+  if (e.code === '23503' && /costume_entrants_player_id_fkey/.test(about)) {
+    return fail(409, 'That player isn’t on the list any more. Refresh and try again.');
+  }
+  if (e.code === '23503' && /costume/.test(about)) {
+    return fail(409, 'That person isn’t in the costume line-up any more. Refresh and try again.');
+  }
+  if (e.code === '23514' && /costume_entrant_kind/.test(about)) return fail(400, 'Names need 1 to 40 characters.');
   if (e.code === '23505' && /costume_entrants_player_id_key|costume_guest_lower_idx/.test(about)) {
     return fail(409, 'They’re already in the costume line-up.');
   }
@@ -91,9 +100,16 @@ export const postCheckIn = wrap(async (request, { query }) => {
 export const postVote = wrap(async (request, { query }) => {
   const refused = crossSite(request);
   if (refused) return refused;
-  const { voterId, femaleId, maleId } = await body(request);
-  await castVotes(query(), voterId, femaleId, maleId);
-  return json({ voted: true });
+  const { voterId, femaleId, maleId, token } = await body(request);
+  return json({ token: await castVotes(query(), voterId, femaleId, maleId, token) });
+});
+
+/** POST, not GET, so the ballot token stays out of URLs and logs. */
+export const postBallot = wrap(async (request, { query }) => {
+  const refused = crossSite(request);
+  if (refused) return refused;
+  const { token } = await body(request);
+  return json({ ballot: await ballotStatus(query(), token) });
 });
 
 export const getSession = wrap(async (request, { env }) => json({ signedIn: isOrganizer(request, env) }));

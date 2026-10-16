@@ -6,6 +6,7 @@ import type {
   CostumePick,
   CostumeVote,
   CostumeVoting,
+  BallotStatus,
   GameResult,
   Gender,
   MatchKey,
@@ -20,16 +21,19 @@ import type { Query, Row } from './db.js';
 /** A request the organizer's screens should never send; answered with 400. */
 export class BadRequest extends Error {}
 
-export const TABLES: readonly TableName[] = [
-  'players',
-  'results',
-  'pairs',
-  'matches',
-  'entrants',
-  'votes',
-  'picks',
-  'voting',
-];
+// Kept here rather than imported from src, which the functions don't bundle; the Record makes a missing table a type error.
+const TABLE_SET: Record<TableName, true> = {
+  players: true,
+  results: true,
+  pairs: true,
+  matches: true,
+  entrants: true,
+  votes: true,
+  picks: true,
+  voting: true,
+  ballots: true,
+};
+export const TABLES = Object.keys(TABLE_SET) as readonly TableName[];
 export type Versions = Record<TableName, number>;
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : v === null || v === undefined ? null : String(v));
@@ -71,13 +75,11 @@ const toEntrant = (r: Row): CostumeEntrant => ({
   guestGender: (r.guest_gender as Gender | null) ?? null,
 });
 
-const toVote =
-  (organizer: boolean) =>
-  (r: Row): CostumeVote => ({
-    voterId: String(r.voter_id),
-    gender: r.gender as Gender,
-    entrantId: organizer ? String(r.entrant_id) : null,
-  });
+const toVote = (r: Row): CostumeVote => ({
+  voterId: String(r.voter_id),
+  gender: r.gender as Gender,
+  entrantId: String(r.entrant_id),
+});
 
 const toPick = (r: Row): CostumePick => ({ gender: r.gender as Gender, entrantId: String(r.entrant_id) });
 
@@ -85,7 +87,10 @@ const PLAYER_COLUMNS = 'id, name, gender, skill, checked_in_at, team_id';
 const RESULT_COLUMNS = 'id, player_id, outcome, created_at';
 const ENTRANT_COLUMNS = 'id, player_id, guest, guest_gender';
 
-/** `organizer` is true for the organizer's session: only they see who each costume vote went to. */
+/**
+ * `organizer` is true for the organizer's session. Only they get the costume votes and tie-break picks;
+ * guests get empty lists and learn only who has voted (ballots), never who anyone picked.
+ */
 const READ: { [T in TableName]: (q: Query, organizer: boolean) => Promise<Snapshot[T]> } = {
   players: async (q) => (await q(`select ${PLAYER_COLUMNS} from players order by name`)).map(toPlayer),
   results: async (q) => (await q(`select ${RESULT_COLUMNS} from results order by created_at, id`)).map(toResult),
@@ -94,16 +99,24 @@ const READ: { [T in TableName]: (q: Query, organizer: boolean) => Promise<Snapsh
   entrants: async (q) =>
     (await q(`select ${ENTRANT_COLUMNS} from costume_entrants order by created_at, id`)).map(toEntrant),
   votes: async (q, organizer) =>
-    (
-      await q(
-        'select coalesce(voter_player_id, voter_entrant_id) as voter_id, gender, entrant_id from costume_votes order by created_at',
-      )
-    ).map(toVote(organizer)),
-  picks: async (q) => (await q('select gender, entrant_id from costume_picks')).map(toPick),
+    organizer
+      ? (
+          await q(
+            'select coalesce(voter_player_id, voter_entrant_id) as voter_id, gender, entrant_id from costume_votes order by created_at',
+          )
+        ).map(toVote)
+      : [],
+  picks: async (q, organizer) =>
+    organizer ? (await q('select gender, entrant_id from costume_picks')).map(toPick) : [],
   voting: async (q): Promise<CostumeVoting> => {
-    const rows = await q('select opened_at from costume_voting');
-    return { open: rows[0]?.opened_at != null };
+    const [row] = await q('select opened_at, closed_at from costume_voting');
+    const opened = row?.opened_at != null;
+    return { open: opened && row.closed_at == null, closed: opened && row.closed_at != null };
   },
+  ballots: async (q) =>
+    (await q('select coalesce(voter_player_id, voter_entrant_id) as voter_id from costume_ballots order by created_at')).map(
+      (r) => String(r.voter_id),
+    ),
 };
 
 export async function readVersions(q: Query): Promise<Versions> {
@@ -123,7 +136,7 @@ export async function readState(q: Query, tables: readonly TableName[], organize
       (data as Record<TableName, unknown>)[t] = await READ[t](q, organizer);
     }),
   );
-  return { versions, data };
+  return { versions, data, organizer };
 }
 
 export async function checkIn(q: Query, playerId: unknown): Promise<TeamId> {
@@ -131,14 +144,41 @@ export async function checkIn(q: Query, playerId: unknown): Promise<TeamId> {
   return rows[0].team as TeamId;
 }
 
-/** A Best in Costume vote. Open to everyone; the database refuses a second vote by the same voter. */
-export async function castVotes(q: Query, voterId: unknown, femaleId: unknown, maleId: unknown): Promise<void> {
-  const pick = (value: unknown, field: string) => (value === null || value === undefined ? null : text(value, field));
-  await q('select cast_costume_votes($1, $2, $3)', [
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const optional = (value: unknown, field: string) => (value === null || value === undefined ? null : text(value, field));
+
+function token(value: unknown): string {
+  if (typeof value !== 'string' || !UUID.test(value)) throw new BadRequest('Unknown ballot.');
+  return value;
+}
+
+/**
+ * A Best in Costume ballot. Open to everyone; the database refuses a second ballot for the same voter.
+ * With the ballot's token, the phone that cast it can fill in an award it lost. Returns the token.
+ */
+export async function castVotes(q: Query, voterId: unknown, femaleId: unknown, maleId: unknown, ballot: unknown) {
+  const rows = await q('select cast_costume_votes($1, $2, $3, $4) as token', [
     text(voterId, 'voterId'),
-    pick(femaleId, 'femaleId'),
-    pick(maleId, 'maleId'),
+    optional(femaleId, 'femaleId'),
+    optional(maleId, 'maleId'),
+    ballot === null || ballot === undefined ? null : token(ballot),
   ]);
+  return String(rows[0].token);
+}
+
+/** Who a ballot is for and which awards it has votes in, or null once the organizer has cleared it. */
+export async function ballotStatus(q: Query, ballot: unknown): Promise<BallotStatus | null> {
+  const rows = await q(
+    `select coalesce(b.voter_player_id, b.voter_entrant_id) as voter_id,
+            coalesce(array_agg(v.gender order by v.gender) filter (where v.gender is not null), '{}') as genders
+     from costume_ballots b
+     left join costume_votes v on coalesce(v.voter_player_id, v.voter_entrant_id) = coalesce(b.voter_player_id, b.voter_entrant_id)
+     where b.token = $1
+     group by b.voter_player_id, b.voter_entrant_id`,
+    [token(ballot)],
+  );
+  if (rows.length === 0) return null;
+  return { voterId: String(rows[0].voter_id), genders: rows[0].genders as Gender[] };
 }
 
 // Argument checks: the database constraints are the real guard, these just give clear errors.
@@ -162,27 +202,35 @@ const cleanName = (value: unknown) => text(value, 'name').trim().replace(/\s+/g,
 
 const notFound = () => new BadRequest('That player isn’t on the list any more. Refresh and try again.');
 
+/** One person shouldn't be both a player and a costume guest: they'd get two votes. */
+const guestClash = (name: string) =>
+  new BadRequest(`${name} is in the costume line-up as a guest who isn’t playing. Remove them there first.`);
+const NOT_A_GUEST = 'not exists (select 1 from costume_entrants where lower(guest) = lower($1))';
+
 type Args = Record<string, unknown>;
 
 /** Everything the organizer can change. Each runs as a single statement, so it's all-or-nothing. */
 export const organizerActions: Record<string, (q: Query, a: Args) => Promise<unknown>> = {
   async addPlayer(q, a) {
-    const rows = await q(`insert into players (name, gender, skill) values ($1, $2, $3) returning ${PLAYER_COLUMNS}`, [
-      cleanName(a.name),
-      oneOf(a.gender, 'gender', GENDERS),
-      oneOf(a.skill, 'skill', SKILLS),
-    ]);
+    const name = cleanName(a.name);
+    const rows = await q(
+      `insert into players (name, gender, skill) select $1, $2, $3 where ${NOT_A_GUEST} returning ${PLAYER_COLUMNS}`,
+      [name, oneOf(a.gender, 'gender', GENDERS), oneOf(a.skill, 'skill', SKILLS)],
+    );
+    if (rows.length === 0) throw guestClash(name);
     return toPlayer(rows[0]);
   },
 
   async updatePlayer(q, a) {
-    const rows = await q('update players set name = $2, gender = $3, skill = $4 where id = $1 returning id', [
-      text(a.playerId, 'playerId'),
-      cleanName(a.name),
-      oneOf(a.gender, 'gender', GENDERS),
-      oneOf(a.skill, 'skill', SKILLS),
-    ]);
-    if (rows.length === 0) throw notFound();
+    const name = cleanName(a.name);
+    const rows = await q(
+      `update players set name = $1, gender = $3, skill = $4 where id = $2 and ${NOT_A_GUEST} returning id`,
+      [name, text(a.playerId, 'playerId'), oneOf(a.gender, 'gender', GENDERS), oneOf(a.skill, 'skill', SKILLS)],
+    );
+    if (rows.length === 0) {
+      const clash = await q(`select 1 from costume_entrants where lower(guest) = lower($1)`, [name]);
+      throw clash.length > 0 ? guestClash(name) : notFound();
+    }
     return null;
   },
 
@@ -274,9 +322,11 @@ export const organizerActions: Record<string, (q: Query, a: Args) => Promise<unk
 
   /** Clears a voter's votes so they can vote again, e.g. when someone else voted in their name. */
   async clearCostumeVotes(q, a) {
-    await q('delete from costume_votes where coalesce(voter_player_id, voter_entrant_id) = $1', [
-      text(a.voterId, 'voterId'),
-    ]);
+    await q(
+      `with cleared as (delete from costume_ballots where coalesce(voter_player_id, voter_entrant_id) = $1)
+       delete from costume_votes where coalesce(voter_player_id, voter_entrant_id) = $1`,
+      [text(a.voterId, 'voterId')],
+    );
     return null;
   },
 

@@ -18,12 +18,22 @@ const entrants: CostumeEntrant[] = [
   { id: 'e3', playerId: null, guestName: 'Morticia', guestGender: 'F' },
   { id: 'e4', playerId: null, guestName: 'Gomez', guestGender: 'M' },
 ];
-const forF = (voterId: string, entrantId: string | null): CostumeVote => ({ voterId, gender: 'F', entrantId });
+const forF = (voterId: string, entrantId: string): CostumeVote => ({ voterId, gender: 'F', entrantId });
 
 describe('best in costume', () => {
-  it('counts votes per person, ignoring the redacted votes guests see', () => {
-    const counts = tally([forF('p3', 'e1'), forF('e4', 'e1'), forF('p2', 'e3'), forF('p1', null)]);
+  it('counts votes per person in one award', () => {
+    const counts = tally([forF('p3', 'e1'), forF('e4', 'e1'), forF('p2', 'e3'), { voterId: 'p1', gender: 'M', entrantId: 'e4' }], 'F');
     expect(Object.fromEntries(counts)).toEqual({ e1: 2, e3: 1 });
+  });
+
+  it('keeps votes in the award they were cast in when a person moves to the other one', () => {
+    const votes = [forF('p3', 'e1'), forF('e4', 'e1'), forF('e3', 'e2')];
+    const moved = players.map((p) => (p.id === 'p1' ? { ...p, gender: 'M' as const } : p));
+    const women = standing('F', entrants, moved, votes, []);
+    expect(women.ranked.map((r) => r.entrant.id)).not.toContain('e1');
+    expect(women.winner?.id).toBe('e2');
+    const men = standing('M', entrants, moved, votes, []);
+    expect(men.ranked.find((r) => r.entrant.id === 'e1')?.votes).toBe(0);
   });
 
   it('lets every player and every guest not playing vote, knowing their own entry', () => {

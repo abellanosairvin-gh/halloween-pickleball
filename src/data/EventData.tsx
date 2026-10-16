@@ -1,6 +1,6 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { playerRecords, type Record } from '../domain/standings';
-import type { GameResult, Snapshot, TableName } from '../domain/types';
+import { type GameResult, type Snapshot, TABLE_NAMES, type TableName } from '../domain/types';
 import { repo } from '../lib/backend';
 import type { Repo } from './repo';
 import { useToast } from '../components/Toast';
@@ -53,9 +53,7 @@ export function EventDataProvider({ children }: { children: ReactNode }) {
     loadAll();
     const unsubscribe = repo.subscribe((t) => refresh([t]));
     // Catch up after the phone wakes or the tab comes back into view.
-    const onVisible = () =>
-      document.visibilityState === 'visible' &&
-      refresh(['players', 'results', 'pairs', 'matches', 'entrants', 'votes', 'picks', 'voting']);
+    const onVisible = () => document.visibilityState === 'visible' && refresh(TABLE_NAMES);
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       unsubscribe();

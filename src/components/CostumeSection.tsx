@@ -1,6 +1,6 @@
 import { type CSSProperties, type FormEvent, useMemo, useState } from 'react';
 import { useEventData } from '../data/EventData';
-import { eligibleVoters, entrantName, standing, votedIds } from '../domain/costume';
+import { eligibleVoters, entrantName, standing } from '../domain/costume';
 import { MAX_NAME_LENGTH, normalizeName } from '../domain/roster';
 import { GENDER_LABEL } from '../domain/teams';
 import type { CostumeEntrant, Gender } from '../domain/types';
@@ -11,17 +11,18 @@ import { useToast } from './Toast';
 export function CostumeSection() {
   const { data, run } = useEventData();
   const toast = useToast();
-  const { players, entrants, votes, voting } = data!;
+  const { players, entrants, votes, voting, ballots } = data!;
   const [adding, setAdding] = useState(false);
-  const [confirmVoting, setConfirmVoting] = useState(false);
+  /** Open (true) or close (false) voting, waiting for confirmation. Fixed when asked, in case another device toggles it. */
+  const [confirmVoting, setConfirmVoting] = useState<boolean | null>(null);
   const [showVoters, setShowVoters] = useState(false);
   const [removing, setRemoving] = useState<CostumeEntrant | null>(null);
 
   const voterCount = eligibleVoters(players, entrants).length;
-  const votedCount = votedIds(votes).size;
+  const votedCount = ballots.length;
   const removingName = removing ? entrantName(removing, players) : '';
   const removingVotes = removing ? votes.filter((v) => v.entrantId === removing.id).length : 0;
-  const removingVoted = removing ? votes.some((v) => v.voterId === removing.id) : false;
+  const removingVoted = removing ? ballots.includes(removing.id) : false;
 
   return (
     <section className="costume" aria-labelledby="costume-title">
@@ -31,7 +32,9 @@ export function CostumeSection() {
           <span className="section-count">
             {votedCount} of {voterCount} voted
           </span>
-          <span className={`costume__status ${voting.open ? 'is-open' : ''}`}>{voting.open ? 'Voting open' : 'Voting closed'}</span>
+          <span className={`costume__status ${voting.open ? 'is-open' : ''}`}>
+            {voting.open ? 'Voting open' : voting.closed ? 'Voting closed' : 'Not open yet'}
+          </span>
         </h2>
         <div className="toolbar__actions">
           <button type="button" className="btn btn--small btn--quiet" disabled={votedCount === 0} onClick={() => setShowVoters(true)}>
@@ -43,7 +46,7 @@ export function CostumeSection() {
           <button
             type="button"
             className={`btn btn--small ${voting.open ? 'btn--danger-quiet' : 'btn--primary'}`}
-            onClick={() => setConfirmVoting(true)}
+            onClick={() => setConfirmVoting(!voting.open)}
           >
             {voting.open ? 'Close voting' : 'Open voting'}
           </button>
@@ -52,7 +55,9 @@ export function CostumeSection() {
       <p className="page-meta costume__intro">
         {voting.open
           ? 'Guests are voting on the party page’s Costume tab: one woman and one man each, once. Only you see the counts.'
-          : 'Add everyone in costume, then open voting. Guests vote once and can’t change it, so anyone added after they vote misses out on their vote.'}
+          : voting.closed
+            ? 'Voting is closed and guests can’t vote. Open it again to let more people vote.'
+            : 'Add everyone in costume, then open voting. Guests vote once and can’t change it, so anyone added after they vote misses out on their vote.'}
       </p>
 
       <div className="roster-columns">
@@ -62,25 +67,25 @@ export function CostumeSection() {
       </div>
 
       <ConfirmDialog
-        open={confirmVoting}
-        tone={voting.open ? 'danger' : 'primary'}
-        title={voting.open ? 'Close voting?' : 'Open voting?'}
+        open={confirmVoting !== null}
+        tone={confirmVoting ? 'primary' : 'danger'}
+        title={confirmVoting ? 'Open voting?' : 'Close voting?'}
         message={
-          voting.open
-            ? 'Guests can’t vote until you open it again. Votes already cast are kept.'
-            : `Guests can vote on the party page’s Costume tab right away. Is everyone in costume on the list? There are ${
+          confirmVoting
+            ? `Guests can vote on the party page’s Costume tab right away. Is everyone in costume on the list? There are ${
                 entrants.length
               } in the line-up now, and each guest votes only once.`
+            : 'Guests can’t vote until you open it again. Votes already cast are kept.'
         }
-        confirmLabel={voting.open ? 'Close voting' : 'Open voting'}
+        confirmLabel={confirmVoting ? 'Open voting' : 'Close voting'}
         onConfirm={() => {
-          const open = !voting.open;
+          const open = confirmVoting!;
           void run(['voting'], async (r) => {
             await r.setCostumeVoting(open);
             toast.show(open ? 'Voting is open' : 'Voting is closed');
           });
         }}
-        onCancel={() => setConfirmVoting(false)}
+        onCancel={() => setConfirmVoting(null)}
       />
       <CostumeForm open={adding} onClose={() => setAdding(false)} />
       <VotersDialog open={showVoters} onClose={() => setShowVoters(false)} />
@@ -90,14 +95,17 @@ export function CostumeSection() {
         message={
           <>
             {removingName} leaves the costume line-up.
-            {removingVotes > 0 && ` The ${removingVotes} ${removingVotes === 1 ? 'vote' : 'votes'} they got ${removingVotes === 1 ? 'is' : 'are'} removed too.`}
-            {removingVoted && ' Their own votes are removed as well.'}
+            {removingVotes > 0 &&
+              ` The ${removingVotes} ${removingVotes === 1 ? 'vote' : 'votes'} they got ${
+                removingVotes === 1 ? 'is' : 'are'
+              } removed, and those voters can vote again for that award from the phone they used.`}
+            {removingVoted && ' Their own vote is removed as well.'}
           </>
         }
         confirmLabel="Remove"
         onConfirm={() => {
           const entrant = removing!;
-          void run(['entrants', 'votes', 'picks'], async (r) => {
+          void run(['entrants', 'votes', 'picks', 'ballots'], async (r) => {
             await r.removeCostumeEntrant(entrant.id);
             toast.show(`Removed ${entrantName(entrant, players)} from the line-up`);
           });
@@ -135,8 +143,9 @@ function CostumeColumn({ gender, onRemove }: { gender: Gender; onRemove: (entran
                   </span>
                   {entrant.guestName !== null && <span className="costume__note">Not playing</span>}
                 </span>
-                <span className="costume__count" aria-label={`${count} ${count === 1 ? 'vote' : 'votes'}`}>
+                <span className="costume__count">
                   {count}
+                  <span className="visually-hidden">{count === 1 ? ' vote' : ' votes'}</span>
                 </span>
                 <button type="button" className="roster__btn" onClick={() => onRemove(entrant)} aria-label={`Remove ${name(entrant)}`}>
                   <span className="costume__remove" aria-hidden="true">
@@ -323,17 +332,16 @@ function VotersDialog({ open, onClose }: { open: boolean; onClose: () => void })
   const { data, run } = useEventData();
   const toast = useToast();
   const [clearing, setClearing] = useState<{ id: string; name: string } | null>(null);
-  const { players, entrants, votes } = data!;
-  const voted = votedIds(votes);
+  const { players, entrants, votes, ballots } = data!;
+  const voted = new Set(ballots);
   const list = eligibleVoters(players, entrants).filter((v) => voted.has(v.id));
-  /** Who a voter picked, as "Women: Adi · Men: Count Dracula". */
+  /** Who a voter picked, as "Women: Adi · Men: Count Dracula". An award they lost shows as not voted. */
   const picksOf = (voterId: string) =>
     (['F', 'M'] as Gender[])
       .map((g) => {
         const entrant = entrants.find((e) => e.id === votes.find((v) => v.voterId === voterId && v.gender === g)?.entrantId);
-        return entrant && `${GENDER_LABEL[g]}: ${entrantName(entrant, players)}`;
+        return `${GENDER_LABEL[g]}: ${entrant ? entrantName(entrant, players) : 'not voted'}`;
       })
-      .filter(Boolean)
       .join(' · ');
 
   const close = () => {
@@ -358,7 +366,7 @@ function VotersDialog({ open, onClose }: { open: boolean; onClose: () => void })
             onClick={() => {
               const voter = clearing;
               setClearing(null);
-              void run(['votes'], async (r) => {
+              void run(['votes', 'ballots'], async (r) => {
                 await r.clearCostumeVotes(voter.id);
                 toast.show(`Cleared ${voter.name}’s vote`);
               });

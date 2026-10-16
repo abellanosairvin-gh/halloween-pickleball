@@ -32,7 +32,11 @@ function PlayerFormBody({ player, onClose }: { player: Player | null; onClose: (
   const [confirmSave, setConfirmSave] = useState(false);
 
   const locked = player ? lockedPairPlayerIds(data!.pairs).has(player.id) : false;
-  const nameError = nameProblem(name, data!.players, player?.id);
+  const guests = data!.entrants.flatMap((e) => (e.guestName === null ? [] : [e.guestName]));
+  const nameError = nameProblem(name, data!.players, player?.id, guests);
+  // Deleting a player also takes their costume entry, the votes they got, and their own vote.
+  const inCostume = player ? data!.entrants.some((e) => e.playerId === player.id) : false;
+  const hasVoted = player ? data!.ballots.includes(player.id) : false;
   const missing = !gender ? 'Choose women or men.' : !skill ? 'Choose a skill level.' : null;
   const error = submitted ? (nameError ?? missing) : null;
   const games = player ? recordOf(records, player.id).games : 0;
@@ -74,7 +78,7 @@ function PlayerFormBody({ player, onClose }: { player: Player | null; onClose: (
   async function remove() {
     if (!player) return;
     setSaving(true);
-    const ok = await run(['players', 'results'], async (r) => {
+    const ok = await run(['players', 'results', 'entrants', 'votes', 'picks', 'ballots'], async (r) => {
       await r.deletePlayer(player.id);
       return true;
     });
@@ -111,7 +115,9 @@ function PlayerFormBody({ player, onClose }: { player: Player | null; onClose: (
         <p className="dialog__text">
           {player.name} will be removed from the player list
           {player.teamId ? ' and their team' : ''}.
-          {games > 0 && ` Their ${games} recorded ${games === 1 ? 'game is' : 'games are'} deleted too, which changes the team win rate.`}{' '}
+          {games > 0 && ` Their ${games} recorded ${games === 1 ? 'game is' : 'games are'} deleted too, which changes the team win rate.`}
+          {inCostume && ' They leave the Best in Costume line-up, along with any votes they got.'}
+          {hasVoted && ' Their own costume vote is deleted too.'}{' '}
           This can’t be undone.
         </p>
         <div className="dialog__actions">

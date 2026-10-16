@@ -12,6 +12,7 @@ import { lockedPairMessage, lockedPairPlayerIds, nameProblem, normalizeName } fr
 import { entrantGender, lineUp } from '../domain/costume';
 import { isPairEligible, MIN_PAIR_GAMES, playerRecords } from '../domain/standings';
 import type { BracketId, BracketMatch, BracketPair, Gender, Player, Snapshot, TableName } from '../domain/types';
+import { clearBallot } from '../lib/ballotStore';
 import type { AuthClient, Repo } from './repo';
 import { SEED_PLAYERS } from './seedPlayers';
 
@@ -21,10 +22,13 @@ import { SEED_PLAYERS } from './seedPlayers';
  */
 
 const STORE_KEY = 'hpp-demo-store-v1';
+
+/** The stored snapshot plus each ballot's token, which only the phone that cast it gets back. */
+type Store = Snapshot & { ballotTokens: Record<string, string> };
 const SESSION_KEY = 'hpp-demo-session-v1';
 export const DEMO_PASSWORD = 'boo';
 
-function seedSnapshot(): Snapshot {
+function seedSnapshot(): Store {
   return {
     players: SEED_PLAYERS.map((p, i) => ({
       id: `p${String(i + 1).padStart(2, '0')}`,
@@ -38,7 +42,9 @@ function seedSnapshot(): Snapshot {
     entrants: [],
     votes: [],
     picks: [],
-    voting: { open: false },
+    voting: { open: false, closed: false },
+    ballots: [],
+    ballotTokens: {},
   };
 }
 
@@ -59,24 +65,36 @@ function safeSet(key: string, value: string | null) {
   }
 }
 
+const guestNames = (s: Store) => s.entrants.flatMap((e) => (e.guestName === null ? [] : [e.guestName]));
+
 function openChannel(name: string): BroadcastChannel | null {
   return typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(name);
 }
 
-/** Mirrors the costume tables' cascading deletes: votes for and by these entrants, and picks of them, go too. */
-function removeEntrants(s: Snapshot, ids: Set<string>) {
+/** Mirrors the ballot's cascading delete when its voter goes. */
+function removeBallots(s: Store, voterIds: Set<string>) {
+  s.ballots = s.ballots.filter((id) => !voterIds.has(id));
+  for (const id of voterIds) delete s.ballotTokens[id];
+}
+
+/**
+ * Mirrors the costume tables' cascading deletes: votes for these entrants and picks of them go, as do a
+ * guest's own ballot and votes. Ballots of people who voted for them stay, so those voters can fill in the award.
+ */
+function removeEntrants(s: Store, ids: Set<string>) {
   s.entrants = s.entrants.filter((e) => !ids.has(e.id));
-  s.votes = s.votes.filter((v) => !ids.has(v.voterId) && !ids.has(v.entrantId!));
+  s.votes = s.votes.filter((v) => !ids.has(v.voterId) && !ids.has(v.entrantId));
   s.picks = s.picks.filter((p) => !ids.has(p.entrantId));
+  removeBallots(s, ids);
 }
 
 /** Mirrors the players_guard_locked_pair trigger and the bracket_pairs foreign keys. */
-function guardLocked(s: Snapshot, player: Player) {
+function guardLocked(s: Store, player: Player) {
   if (lockedPairPlayerIds(s.pairs).has(player.id)) throw new Error(lockedPairMessage(player.name));
 }
 
 export function createLocalRepo(): Repo {
-  let memory: Snapshot | null = null;
+  let memory: Store | null = null;
   const listeners = new Set<(t: TableName) => void>();
   const channel = openChannel('hpp-demo-data');
 
@@ -85,15 +103,18 @@ export function createLocalRepo(): Repo {
     listeners.forEach((l) => l(e.data));
   });
 
-  function read(): Snapshot {
+  function read(): Store {
     if (memory) return memory;
     const raw = safeGet(STORE_KEY);
-    memory = raw ? (JSON.parse(raw) as Snapshot) : seedSnapshot();
+    memory = raw ? (JSON.parse(raw) as Store) : seedSnapshot();
     // Stores saved before Best in Costume voting have no costume tables.
     memory.entrants ??= [];
     memory.votes ??= [];
     memory.picks ??= [];
-    memory.voting ??= { open: false };
+    const voting = memory.voting as Partial<Snapshot['voting']> | undefined;
+    memory.voting = { open: voting?.open ?? false, closed: voting?.closed ?? false };
+    memory.ballots ??= [...new Set(memory.votes.map((v) => v.voterId))];
+    memory.ballotTokens ??= {};
     // Stores saved before mixed doubles named each bracket by gender and played a final in it.
     type Saved<T> = T & { gender?: Gender };
     const named = <T extends { bracket: BracketId }>({ gender, ...rest }: Saved<T>) =>
@@ -105,7 +126,7 @@ export function createLocalRepo(): Repo {
     return memory;
   }
 
-  function write(next: Snapshot, changed: TableName[]) {
+  function write(next: Store, changed: TableName[]) {
     memory = next;
     safeSet(STORE_KEY, JSON.stringify(next));
     for (const t of changed) {
@@ -114,12 +135,13 @@ export function createLocalRepo(): Repo {
     }
   }
 
-  const clone = (): Snapshot => structuredClone(read());
+  const clone = (): Store => structuredClone(read());
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
   return {
     async fetchAll() {
-      return clone();
+      const { ballotTokens: _tokens, ...snapshot } = clone();
+      return snapshot;
     },
     async fetchTable(table) {
       return clone()[table];
@@ -131,7 +153,7 @@ export function createLocalRepo(): Repo {
 
     async addPlayer(draft) {
       const s = clone();
-      const problem = nameProblem(draft.name, s.players);
+      const problem = nameProblem(draft.name, s.players, undefined, guestNames(s));
       if (problem) throw new Error(problem);
       const player = { id: crypto.randomUUID(), ...draft, name: normalizeName(draft.name), checkedInAt: null, teamId: null };
       s.players.push(player);
@@ -143,7 +165,7 @@ export function createLocalRepo(): Repo {
       const s = clone();
       const player = s.players.find((p) => p.id === playerId);
       if (!player) throw new Error('Player not found');
-      const problem = nameProblem(draft.name, s.players, playerId);
+      const problem = nameProblem(draft.name, s.players, playerId, guestNames(s));
       if (problem) throw new Error(problem);
       if (draft.gender !== player.gender) guardLocked(s, player);
       Object.assign(player, { ...draft, name: normalizeName(draft.name) });
@@ -158,8 +180,9 @@ export function createLocalRepo(): Repo {
       s.players = s.players.filter((p) => p.id !== playerId);
       s.results = s.results.filter((r) => r.playerId !== playerId);
       s.votes = s.votes.filter((v) => v.voterId !== playerId);
+      removeBallots(s, new Set([playerId]));
       removeEntrants(s, new Set(s.entrants.filter((e) => e.playerId === playerId).map((e) => e.id)));
-      write(s, ['players', 'results', 'entrants', 'votes', 'picks']);
+      write(s, ['players', 'results', 'entrants', 'votes', 'picks', 'ballots']);
     },
 
     async checkIn(playerId) {
@@ -273,7 +296,7 @@ export function createLocalRepo(): Repo {
       write(s, ['pairs', 'matches']);
     },
 
-    async castVotes(voterId, femaleId, maleId) {
+    async castVotes(voterId, femaleId, maleId, token) {
       await tick();
       const s = clone();
       if (!s.voting.open) throw new Error('Voting isn’t open right now. Check back when the organizer opens it.');
@@ -281,7 +304,6 @@ export function createLocalRepo(): Repo {
         s.players.find((p) => p.id === voterId)?.name ??
         s.entrants.find((e) => e.id === voterId && e.guestName !== null)?.guestName;
       if (!voter) throw new Error('Your name isn’t on the list any more. Refresh and try again.');
-      if (s.votes.some((v) => v.voterId === voterId)) throw new Error(`${voter} has already voted.`);
       const picks = (
         [
           ['F', femaleId],
@@ -289,6 +311,13 @@ export function createLocalRepo(): Repo {
         ] as const
       ).filter((pick): pick is readonly [Gender, string] => pick[1] !== null);
       if (picks.length === 0) throw new Error('Pick who gets your vote.');
+      const existing = s.ballotTokens[voterId];
+      if (s.ballots.includes(voterId)) {
+        if (!existing || token !== existing) throw new Error(`${voter} has already voted.`);
+        if (s.votes.some((v) => v.voterId === voterId && picks.some(([g]) => g === v.gender))) {
+          throw new Error('You’ve already voted for that award.');
+        }
+      }
       for (const [gender, entrantId] of picks) {
         const entrant = s.entrants.find((e) => e.id === entrantId);
         if (!entrant) throw new Error('Someone you picked isn’t in the costume line-up any more. Refresh and pick again.');
@@ -297,8 +326,21 @@ export function createLocalRepo(): Repo {
         }
         if (entrant.id === voterId || entrant.playerId === voterId) throw new Error('You can’t vote for yourself.');
       }
+      const ballot = existing ?? crypto.randomUUID();
+      if (!s.ballots.includes(voterId)) {
+        s.ballots.push(voterId);
+        s.ballotTokens[voterId] = ballot;
+      }
       s.votes.push(...picks.map(([gender, entrantId]) => ({ voterId, gender, entrantId })));
-      write(s, ['votes']);
+      write(s, ['votes', 'ballots']);
+      return ballot;
+    },
+
+    async ballotStatus(token) {
+      const s = clone();
+      const voterId = Object.keys(s.ballotTokens).find((id) => s.ballotTokens[id] === token);
+      if (!voterId) return null;
+      return { voterId, genders: s.votes.filter((v) => v.voterId === voterId).map((v) => v.gender).sort() };
     },
 
     async addCostumePlayer(playerId) {
@@ -319,7 +361,7 @@ export function createLocalRepo(): Repo {
       if (s.players.some((p) => p.name.toLowerCase() === clean.toLowerCase())) {
         throw new Error(`${clean} is on the player list. Add them from there.`);
       }
-      if (s.entrants.some((e) => e.guestName?.toLowerCase() === clean.toLowerCase())) {
+      if (guestNames(s).some((g) => g.toLowerCase() === clean.toLowerCase())) {
         throw new Error('They’re already in the costume line-up.');
       }
       const entrant = { id: crypto.randomUUID(), playerId: null, guestName: clean, guestGender: gender };
@@ -331,13 +373,14 @@ export function createLocalRepo(): Repo {
     async removeCostumeEntrant(entrantId) {
       const s = clone();
       removeEntrants(s, new Set([entrantId]));
-      write(s, ['entrants', 'votes', 'picks']);
+      write(s, ['entrants', 'votes', 'picks', 'ballots']);
     },
 
     async clearCostumeVotes(voterId) {
       const s = clone();
       s.votes = s.votes.filter((v) => v.voterId !== voterId);
-      write(s, ['votes']);
+      removeBallots(s, new Set([voterId]));
+      write(s, ['votes', 'ballots']);
     },
 
     async setCostumeVoting(open) {
@@ -345,12 +388,16 @@ export function createLocalRepo(): Repo {
       if (open && (['F', 'M'] as const).some((g) => lineUp(g, s.entrants, s.players).length === 0)) {
         throw new Error('Add at least one woman and one man to the costume line-up before opening voting.');
       }
-      s.voting = { open };
+      const wasOpened = s.voting.open || s.voting.closed;
+      s.voting = { open, closed: !open && wasOpened };
       write(s, ['voting']);
     },
 
     async setCostumePick(gender, entrantId) {
       const s = clone();
+      if (entrantId && !s.entrants.some((e) => e.id === entrantId)) {
+        throw new Error('That person isn’t in the costume line-up any more. Refresh and try again.');
+      }
       s.picks = s.picks.filter((p) => p.gender !== gender);
       if (entrantId) s.picks.push({ gender, entrantId });
       write(s, ['picks']);
@@ -361,6 +408,7 @@ export function createLocalRepo(): Repo {
 /** Clears demo data back to the spreadsheet roster. */
 export function resetDemoData() {
   safeSet(STORE_KEY, null);
+  clearBallot();
 }
 
 export function createLocalAuth(): AuthClient {

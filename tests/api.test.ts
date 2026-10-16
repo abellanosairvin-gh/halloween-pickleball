@@ -10,6 +10,7 @@ import {
   postCheckIn,
   postOrganizer,
   postSession,
+  postBallot,
   postVote,
 } from '../api/_lib/handlers';
 import { COOKIE_NAME, createSessionToken } from '../api/_lib/session';
@@ -64,6 +65,7 @@ describe('guests (party page)', () => {
     expect(data.results).toEqual([]);
     const versions = await (await getVersions(request('/api/versions'), deps)).json();
     expect(Object.keys(versions).sort()).toEqual([
+      'ballots',
       'entrants',
       'matches',
       'pairs',
@@ -275,16 +277,19 @@ describe('organizer actions', () => {
 });
 
 describe('best in costume', () => {
-  const vote = (body: Record<string, unknown>, cookie?: string) =>
-    postVote(request('/api/vote', { method: 'POST', body, cookie }), deps);
-  const votesAs = async (cookie?: string) =>
-    (
-      (await (await getState(request('/api/state?tables=votes', { cookie }), deps)).json()) as {
-        data: Pick<Snapshot, 'votes'>;
-      }
-    ).data.votes;
+  const vote = async (body: Record<string, unknown>) => {
+    const response = await postVote(request('/api/vote', { method: 'POST', body }), deps);
+    return { status: response.status, ...((await response.json()) as { token?: string; error?: string }) };
+  };
+  const ballot = async (token: string) =>
+    ((await (await postBallot(request('/api/ballot', { method: 'POST', body: { token } }), deps)).json()) as {
+      ballot: { voterId: string; genders: string[] } | null;
+    }).ballot;
+  const read = async (cookie?: string) =>
+    (await (await getState(request('/api/state', { cookie }), deps)).json()) as { data: Snapshot; organizer: boolean };
+  const organizerState = async () => (await read(organizerCookie())).data;
 
-  /** Two women and a man from the roster in costume, plus a guest man who isn't playing. */
+  /** Two women and a man from the roster in costume, plus a guest man who isn't playing, with voting open. */
   async function lineUp() {
     const players = (await state()).players;
     const [w1, w2] = players.filter((p) => p.gender === 'F');
@@ -300,12 +305,12 @@ describe('best in costume', () => {
     const players = (await state()).players;
     const woman = players.find((p) => p.gender === 'F')!;
     const voter = players.find((p) => p.gender === 'M')!;
-    expect((await state()).voting).toEqual({ open: false });
+    expect((await state()).voting).toEqual({ open: false, closed: false });
     const entrant = (await (await organizer('addCostumePlayer', { playerId: woman.id })).json()).result;
 
     const early = await vote({ voterId: voter.id, femaleId: entrant.id, maleId: null });
     expect(early.status).toBe(400);
-    expect((await early.json()).error).toMatch('isn’t open');
+    expect(early.error).toMatch('isn’t open');
 
     const noMen = await organizer('setCostumeVoting', { open: true });
     expect(noMen.status).toBe(400);
@@ -313,13 +318,17 @@ describe('best in costume', () => {
 
     await organizer('addCostumeGuest', { name: 'Gomez', gender: 'M' });
     expect((await organizer('setCostumeVoting', { open: true })).status).toBe(200);
-    expect((await state()).voting).toEqual({ open: true });
+    expect((await state()).voting).toEqual({ open: true, closed: false });
     expect((await vote({ voterId: voter.id, femaleId: entrant.id, maleId: null })).status).toBe(200);
 
+    // Closing is remembered, so guests are told voting closed rather than not opened yet.
     await organizer('setCostumeVoting', { open: false });
+    expect((await state()).voting).toEqual({ open: false, closed: true });
     const late = await vote({ voterId: woman.id, femaleId: null, maleId: (await state()).entrants[1].id });
     expect(late.status).toBe(400);
-    expect(await votesAs()).toHaveLength(1);
+    expect((await state()).ballots).toEqual([voter.id]);
+    await organizer('setCostumeVoting', { open: true });
+    expect((await state()).voting).toEqual({ open: true, closed: false });
   });
 
   it('builds the line-up from players and guests who are not playing', async () => {
@@ -333,70 +342,127 @@ describe('best in costume', () => {
     expect(player.status).toBe(400);
     expect((await player.json()).error).toMatch('on the player list');
     expect((await organizer('addCostumeGuest', { name: 'count dracula', gender: 'M' })).status).toBe(409);
+    expect((await organizer('addCostumeGuest', { name: '   ', gender: 'M' })).status).toBe(400);
+    // A guest must have a name, even written straight to the database.
+    await expect(db.query("insert into costume_entrants (guest_gender) values ('F')")).rejects.toThrow();
   });
 
-  it('takes one vote per person, and hides the choices from guests', async () => {
+  it('won’t let one person be both a player and a costume guest', async () => {
+    const { w1Player } = await lineUp();
+    const added = await organizer('addPlayer', { name: 'count dracula', gender: 'M', skill: 'A' });
+    expect(added.status).toBe(400);
+    expect((await added.json()).error).toMatch('costume line-up as a guest');
+    const renamed = await organizer('updatePlayer', { playerId: w1Player.id, name: 'Count Dracula', gender: 'F', skill: 'A' });
+    expect(renamed.status).toBe(400);
+    expect((await renamed.json()).error).toMatch('costume line-up as a guest');
+    const missing = '00000000-0000-0000-0000-000000000000';
+    expect((await organizer('updatePlayer', { playerId: missing, name: 'Nobody', gender: 'F', skill: 'A' })).status).toBe(400);
+  });
+
+  it('takes one ballot per person, and shows guests only who has voted', async () => {
     const { w1, guest, voter } = await lineUp();
     const before = await (await getVersions(request('/api/versions'), deps)).json();
-    expect((await vote({ voterId: voter.id, femaleId: w1.id, maleId: guest.id })).status).toBe(200);
+    const cast = await vote({ voterId: voter.id, femaleId: w1.id, maleId: guest.id });
+    expect(cast.status).toBe(200);
+    expect(cast.token).toMatch(/^[0-9a-f-]{36}$/);
     const after = await (await getVersions(request('/api/versions'), deps)).json();
     expect(after.votes).toBe(before.votes + 1);
+    expect(after.ballots).toBe(before.ballots + 1);
 
-    expect(await votesAs()).toEqual(
-      expect.arrayContaining([
-        { voterId: voter.id, gender: 'F', entrantId: null },
-        { voterId: voter.id, gender: 'M', entrantId: null },
-      ]),
-    );
-    const seen = await votesAs(organizerCookie());
-    expect(seen.map((v) => v.entrantId).sort()).toEqual([w1.id, guest.id].sort());
+    const asGuest = await read();
+    expect(asGuest.organizer).toBe(false);
+    expect(asGuest.data.ballots).toEqual([voter.id]);
+    expect(asGuest.data.votes).toEqual([]);
+    const asOrganizer = await read(organizerCookie());
+    expect(asOrganizer.organizer).toBe(true);
+    expect(asOrganizer.data.votes.map((v) => v.entrantId).sort()).toEqual([w1.id, guest.id].sort());
 
     const second = await vote({ voterId: voter.id, femaleId: w1.id, maleId: guest.id });
     expect(second.status).toBe(400);
-    expect((await second.json()).error).toMatch('already voted');
+    expect(second.error).toMatch('already voted');
+    expect((await ballot(cast.token!))).toEqual({ voterId: voter.id, genders: ['F', 'M'] });
   });
 
   it('refuses self-votes, wrong-award picks and unknown voters', async () => {
     const { w1, w2, m1, guest, w1Player } = await lineUp();
     const self = await vote({ voterId: w1Player.id, femaleId: w1.id, maleId: m1.id });
-    expect((await self.json()).error).toMatch('vote for yourself');
+    expect(self.error).toMatch('vote for yourself');
     const guestSelf = await vote({ voterId: guest.id, femaleId: w2.id, maleId: guest.id });
-    expect((await guestSelf.json()).error).toMatch('vote for yourself');
+    expect(guestSelf.error).toMatch('vote for yourself');
     const wrong = await vote({ voterId: w1Player.id, femaleId: m1.id, maleId: guest.id });
-    expect((await wrong.json()).error).toMatch('a woman for the women');
+    expect(wrong.error).toMatch('a woman for the women');
     const nobody = await vote({ voterId: '00000000-0000-0000-0000-000000000000', femaleId: w1.id, maleId: m1.id });
-    expect((await nobody.json()).error).toMatch('isn’t on the list');
+    expect(nobody.error).toMatch('isn’t on the list');
     const empty = await vote({ voterId: w1Player.id, femaleId: null, maleId: null });
-    expect((await empty.json()).error).toMatch('Pick who');
-    expect(await votesAs()).toEqual([]);
+    expect(empty.error).toMatch('Pick who');
+    expect((await vote({ voterId: w1Player.id, femaleId: w2.id, maleId: m1.id, token: 'not-a-token' })).status).toBe(400);
+    expect((await organizerState()).votes).toEqual([]);
+    expect((await state()).ballots).toEqual([]);
 
     // A guest who isn't playing can vote too.
     expect((await vote({ voterId: guest.id, femaleId: w2.id, maleId: m1.id })).status).toBe(200);
   });
 
+  it('lets the phone that voted fill in an award it lost, and nobody else', async () => {
+    const { w1, w2, m1, guest, voter } = await lineUp();
+    const { token } = await vote({ voterId: voter.id, femaleId: w1.id, maleId: m1.id });
+
+    // Removing the woman they picked takes that vote but keeps their ballot, so guests see no change.
+    const ballotsBefore = (await state()).ballots;
+    await organizer('removeCostumeEntrant', { entrantId: w1.id });
+    expect((await state()).ballots).toEqual(ballotsBefore);
+    expect(await ballot(token!)).toEqual({ voterId: voter.id, genders: ['M'] });
+
+    expect((await vote({ voterId: voter.id, femaleId: w2.id, maleId: null })).error).toMatch('already voted');
+    const forged = '11111111-1111-1111-1111-111111111111';
+    expect((await vote({ voterId: voter.id, femaleId: w2.id, maleId: null, token: forged })).error).toMatch('already voted');
+    expect((await vote({ voterId: voter.id, femaleId: null, maleId: guest.id, token })).error).toMatch('already voted for that award');
+    const refill = await vote({ voterId: voter.id, femaleId: w2.id, maleId: null, token });
+    expect(refill).toMatchObject({ status: 200, token });
+    expect(await ballot(token!)).toEqual({ voterId: voter.id, genders: ['F', 'M'] });
+  });
+
   it('lets the organizer clear a vote, pick a tie-break and remove people', async () => {
     const { w1, w2, m1, guest, voter, m1Player } = await lineUp();
-    await vote({ voterId: voter.id, femaleId: w1.id, maleId: guest.id });
+    const first = await vote({ voterId: voter.id, femaleId: w1.id, maleId: guest.id });
     await vote({ voterId: m1Player.id, femaleId: w2.id, maleId: guest.id });
+    const guestBallot = await vote({ voterId: guest.id, femaleId: w2.id, maleId: m1.id });
 
     expect((await organizer('clearCostumeVotes', { voterId: voter.id })).status).toBe(200);
-    expect((await votesAs()).map((v) => v.voterId)).toEqual([m1Player.id, m1Player.id]);
+    expect((await state()).ballots.sort()).toEqual([m1Player.id, guest.id].sort());
+    expect(await ballot(first.token!)).toBeNull();
     expect((await vote({ voterId: voter.id, femaleId: w1.id, maleId: m1.id })).status).toBe(200);
 
     expect((await organizer('setCostumePick', { gender: 'F', entrantId: w2.id })).status).toBe(200);
     expect((await organizer('setCostumePick', { gender: 'F', entrantId: w1.id })).status).toBe(200);
-    expect((await state()).picks).toEqual([{ gender: 'F', entrantId: w1.id }]);
+    expect((await organizerState()).picks).toEqual([{ gender: 'F', entrantId: w1.id }]);
+    // The tie-break would give away the winner, so guests don't get it.
+    expect((await state()).picks).toEqual([]);
 
-    // Removing someone takes the votes they got, and a guest's own votes, with them.
+    // Removing someone takes the votes they got; removing a guest also takes their own ballot and votes.
     await organizer('removeCostumeEntrant', { entrantId: w1.id });
     await organizer('removeCostumeEntrant', { entrantId: guest.id });
-    const data = await state();
+    const data = await organizerState();
     expect(data.picks).toEqual([]);
     expect(data.entrants.map((e) => e.id).sort()).toEqual([w2.id, m1.id].sort());
-    expect((await votesAs(organizerCookie())).map((v) => v.entrantId).sort()).toEqual([w2.id, m1.id].sort());
+    expect(data.votes.map((v) => `${v.voterId}:${v.entrantId}`).sort()).toEqual(
+      [`${m1Player.id}:${w2.id}`, `${voter.id}:${m1.id}`].sort(),
+    );
+    expect(data.ballots.sort()).toEqual([voter.id, m1Player.id].sort());
+    expect(await ballot(guestBallot.token!)).toBeNull();
 
-    // Deleting a player removes their place in the line-up.
+    // A pick or line-up add for someone who's gone gets a clear message, not a server error.
+    const gone = await organizer('setCostumePick', { gender: 'F', entrantId: w1.id });
+    expect(gone.status).toBe(409);
+    expect((await gone.json()).error).toMatch('isn’t in the costume line-up');
+
+    // Deleting a player removes their place in the line-up and their own ballot.
     await organizer('deletePlayer', { playerId: m1Player.id });
-    expect((await state()).entrants.map((e) => e.id)).toEqual([w2.id]);
+    const afterDelete = await organizerState();
+    expect(afterDelete.entrants.map((e) => e.id)).toEqual([w2.id]);
+    expect(afterDelete.ballots).toEqual([voter.id]);
+    const deleted = await organizer('addCostumePlayer', { playerId: m1Player.id });
+    expect(deleted.status).toBe(409);
+    expect((await deleted.json()).error).toMatch('isn’t on the list');
   });
 });
