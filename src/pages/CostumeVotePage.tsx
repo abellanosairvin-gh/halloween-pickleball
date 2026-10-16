@@ -56,7 +56,7 @@ export function CostumeVotePage() {
   const head = (
     <header className="page-head">
       <h1 className="page-title">Best in costume</h1>
-      <p className="page-meta">Vote for the best costume among the women and among the men. Your vote is secret, and you only get one.</p>
+      <p className="page-meta">Vote for the best costume among the women and among the men. Only the organizer sees who you picked, and you only get one vote.</p>
     </header>
   );
 

@@ -326,6 +326,15 @@ function VotersDialog({ open, onClose }: { open: boolean; onClose: () => void })
   const { players, entrants, votes } = data!;
   const voted = votedIds(votes);
   const list = eligibleVoters(players, entrants).filter((v) => voted.has(v.id));
+  /** Who a voter picked, as "Women: Adi · Men: Count Dracula". */
+  const picksOf = (voterId: string) =>
+    (['F', 'M'] as Gender[])
+      .map((g) => {
+        const entrant = entrants.find((e) => e.id === votes.find((v) => v.voterId === voterId && v.gender === g)?.entrantId);
+        return entrant && `${GENDER_LABEL[g]}: ${entrantName(entrant, players)}`;
+      })
+      .filter(Boolean)
+      .join(' · ');
 
   const close = () => {
     setClearing(null);
@@ -363,14 +372,17 @@ function VotersDialog({ open, onClose }: { open: boolean; onClose: () => void })
   }
 
   return (
-    <Dialog open={open} onClose={close} title="Who voted">
+    <Dialog open={open} onClose={close} title="Who voted for whom">
       {list.length === 0 ? (
         <p className="dialog__text">Nobody has voted yet.</p>
       ) : (
         <ul className="pick-list">
           {list.map((v) => (
             <li key={v.id} className="costume__voter">
-              <span className="pick-list__name">{v.name}</span>
+              <span className="pick-list__who">
+                <span className="pick-list__name">{v.name}</span>
+                <span className="pick-list__note">{picksOf(v.id)}</span>
+              </span>
               <button type="button" className="btn btn--small btn--danger-quiet" onClick={() => setClearing(v)}>
                 Clear vote
               </button>
