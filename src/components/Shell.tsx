@@ -8,6 +8,9 @@ export const TAB_ICONS = {
   teams: 'M3 5h8v6H3zM13 5h8v6h-8zM3 13h8v6H3zM13 13h8v6h-8z',
   tournament:
     'M7 3h10v3h3v3a4 4 0 0 1-4 4h-.3A5 5 0 0 1 13 15.9V18h3v3H8v-3h3v-2.1A5 5 0 0 1 8.3 13H8a4 4 0 0 1-4-4V6h3zm-1 5v1a2 2 0 0 0 1 1.7V8zm11 0v2.7A2 2 0 0 0 18 9V8z',
+  // A masquerade mask; the eyes wind the other way so they show as holes.
+  costume:
+    'M2 8c0-1.1.9-2 2-2h16a2 2 0 0 1 2 2v2.5c0 3.6-2.5 6.5-5.5 6.5-1.9 0-3.3-1-4.5-2.6C10.8 16 9.4 17 7.5 17 4.5 17 2 14.1 2 10.5zm4 1a1.5 1.5 0 0 0 0 3h2.5a1.5 1.5 0 0 0 0-3zm9.5 0a1.5 1.5 0 0 0 0 3H18a1.5 1.5 0 0 0 0-3z',
 };
 
 export interface Tab {

@@ -9,6 +9,7 @@ const TABS = [
   { to: PARTY_PATHS.players, label: 'Check in', icon: TAB_ICONS.players },
   { to: PARTY_PATHS.teams, label: 'Teams', icon: TAB_ICONS.teams },
   { to: PARTY_PATHS.tournament, label: 'Tournament', icon: TAB_ICONS.tournament },
+  { to: PARTY_PATHS.costume, label: 'Costume', icon: TAB_ICONS.costume },
 ];
 
 /** The public page guests reach from the QR code: no sign-in, read-only apart from checking themselves in. */

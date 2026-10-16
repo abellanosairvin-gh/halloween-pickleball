@@ -9,6 +9,7 @@ import {
   validWinners,
 } from '../domain/bracket';
 import { lockedPairMessage, lockedPairPlayerIds, nameProblem, normalizeName } from '../domain/roster';
+import { entrantGender } from '../domain/costume';
 import { isPairEligible, MIN_PAIR_GAMES, playerRecords } from '../domain/standings';
 import type { BracketId, BracketMatch, BracketPair, Gender, Player, Snapshot, TableName } from '../domain/types';
 import type { AuthClient, Repo } from './repo';
@@ -34,6 +35,9 @@ function seedSnapshot(): Snapshot {
     results: [],
     pairs: [],
     matches: [],
+    entrants: [],
+    votes: [],
+    picks: [],
   };
 }
 
@@ -58,6 +62,13 @@ function openChannel(name: string): BroadcastChannel | null {
   return typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(name);
 }
 
+/** Mirrors the costume tables' cascading deletes: votes for and by these entrants, and picks of them, go too. */
+function removeEntrants(s: Snapshot, ids: Set<string>) {
+  s.entrants = s.entrants.filter((e) => !ids.has(e.id));
+  s.votes = s.votes.filter((v) => !ids.has(v.voterId) && !ids.has(v.entrantId!));
+  s.picks = s.picks.filter((p) => !ids.has(p.entrantId));
+}
+
 /** Mirrors the players_guard_locked_pair trigger and the bracket_pairs foreign keys. */
 function guardLocked(s: Snapshot, player: Player) {
   if (lockedPairPlayerIds(s.pairs).has(player.id)) throw new Error(lockedPairMessage(player.name));
@@ -77,6 +88,10 @@ export function createLocalRepo(): Repo {
     if (memory) return memory;
     const raw = safeGet(STORE_KEY);
     memory = raw ? (JSON.parse(raw) as Snapshot) : seedSnapshot();
+    // Stores saved before Best in Costume voting have no costume tables.
+    memory.entrants ??= [];
+    memory.votes ??= [];
+    memory.picks ??= [];
     // Stores saved before mixed doubles named each bracket by gender and played a final in it.
     type Saved<T> = T & { gender?: Gender };
     const named = <T extends { bracket: BracketId }>({ gender, ...rest }: Saved<T>) =>
@@ -140,7 +155,9 @@ export function createLocalRepo(): Repo {
       guardLocked(s, player);
       s.players = s.players.filter((p) => p.id !== playerId);
       s.results = s.results.filter((r) => r.playerId !== playerId);
-      write(s, ['players', 'results']);
+      s.votes = s.votes.filter((v) => v.voterId !== playerId);
+      removeEntrants(s, new Set(s.entrants.filter((e) => e.playerId === playerId).map((e) => e.id)));
+      write(s, ['players', 'results', 'entrants', 'votes', 'picks']);
     },
 
     async checkIn(playerId) {
@@ -252,6 +269,79 @@ export function createLocalRepo(): Repo {
       s.pairs = s.pairs.filter((p) => p.bracket !== bracket);
       s.matches = s.matches.filter((m) => m.bracket !== bracket);
       write(s, ['pairs', 'matches']);
+    },
+
+    async castVotes(voterId, femaleId, maleId) {
+      await tick();
+      const s = clone();
+      const voter =
+        s.players.find((p) => p.id === voterId)?.name ??
+        s.entrants.find((e) => e.id === voterId && e.guestName !== null)?.guestName;
+      if (!voter) throw new Error('Your name isn’t on the list any more. Refresh and try again.');
+      if (s.votes.some((v) => v.voterId === voterId)) throw new Error(`${voter} has already voted.`);
+      const picks = (
+        [
+          ['F', femaleId],
+          ['M', maleId],
+        ] as const
+      ).filter((pick): pick is readonly [Gender, string] => pick[1] !== null);
+      if (picks.length === 0) throw new Error('Pick who gets your vote.');
+      for (const [gender, entrantId] of picks) {
+        const entrant = s.entrants.find((e) => e.id === entrantId);
+        if (!entrant) throw new Error('Someone you picked isn’t in the costume line-up any more. Refresh and pick again.');
+        if (entrantGender(entrant, s.players) !== gender) {
+          throw new Error('Pick a woman for the women’s award and a man for the men’s.');
+        }
+        if (entrant.id === voterId || entrant.playerId === voterId) throw new Error('You can’t vote for yourself.');
+      }
+      s.votes.push(...picks.map(([gender, entrantId]) => ({ voterId, gender, entrantId })));
+      write(s, ['votes']);
+    },
+
+    async addCostumePlayer(playerId) {
+      const s = clone();
+      if (!s.players.some((p) => p.id === playerId)) throw new Error('That player isn’t on the list any more. Refresh and try again.');
+      if (s.entrants.some((e) => e.playerId === playerId)) throw new Error('They’re already in the costume line-up.');
+      const entrant = { id: crypto.randomUUID(), playerId, guestName: null, guestGender: null };
+      s.entrants.push(entrant);
+      write(s, ['entrants']);
+      return entrant;
+    },
+
+    async addCostumeGuest(name, gender) {
+      const s = clone();
+      const clean = normalizeName(name);
+      if (!clean) throw new Error('Enter a name.');
+      if (clean.length > 40) throw new Error('Keep the name under 40 characters.');
+      if (s.players.some((p) => p.name.toLowerCase() === clean.toLowerCase())) {
+        throw new Error(`${clean} is on the player list. Add them from there.`);
+      }
+      if (s.entrants.some((e) => e.guestName?.toLowerCase() === clean.toLowerCase())) {
+        throw new Error('They’re already in the costume line-up.');
+      }
+      const entrant = { id: crypto.randomUUID(), playerId: null, guestName: clean, guestGender: gender };
+      s.entrants.push(entrant);
+      write(s, ['entrants']);
+      return entrant;
+    },
+
+    async removeCostumeEntrant(entrantId) {
+      const s = clone();
+      removeEntrants(s, new Set([entrantId]));
+      write(s, ['entrants', 'votes', 'picks']);
+    },
+
+    async clearCostumeVotes(voterId) {
+      const s = clone();
+      s.votes = s.votes.filter((v) => v.voterId !== voterId);
+      write(s, ['votes']);
+    },
+
+    async setCostumePick(gender, entrantId) {
+      const s = clone();
+      s.picks = s.picks.filter((p) => p.gender !== gender);
+      if (entrantId) s.picks.push({ gender, entrantId });
+      write(s, ['picks']);
     },
   };
 }

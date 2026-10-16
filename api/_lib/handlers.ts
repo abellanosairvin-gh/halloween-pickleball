@@ -1,5 +1,5 @@
 import type { TableName } from '../../src/domain/types';
-import { BadRequest, checkIn, organizerActions, readState, readVersions, TABLES } from './data.js';
+import { BadRequest, castVotes, checkIn, organizerActions, readState, readVersions, TABLES } from './data.js';
 import type { Query } from './db.js';
 import { checkPassword, createSessionToken, isOrganizer, type ServerEnv, sessionCookie } from './session.js';
 
@@ -25,6 +25,10 @@ export function errorResponse(error: unknown): Response {
   if (error instanceof BadRequest) return fail(400, error.message);
   const e = (error ?? {}) as DbError;
   const about = `${e.message ?? ''} ${e.detail ?? ''} ${e.constraint ?? ''}`;
+  if (e.code === '23505' && /costume_votes_once/.test(about)) return fail(409, 'That name has already voted.');
+  if (e.code === '23505' && /costume_entrants_player_id_key|costume_guest_lower_idx/.test(about)) {
+    return fail(409, 'They’re already in the costume line-up.');
+  }
   if (e.code === '23505' && /name/.test(about)) {
     return fail(409, 'There’s already a player with that name. Add an initial to tell them apart.');
   }
@@ -68,11 +72,11 @@ const wrap =
     }
   };
 
-export const getState = wrap(async (request, { query }) => {
+export const getState = wrap(async (request, { query, env }) => {
   const requested = new URL(request.url).searchParams.get('tables');
   const tables = requested ? (requested.split(',') as TableName[]) : [...TABLES];
   if (tables.some((t) => !TABLES.includes(t))) throw new BadRequest('Unknown table.');
-  return json(await readState(query(), tables));
+  return json(await readState(query(), tables, isOrganizer(request, env)));
 });
 
 export const getVersions = wrap(async (_request, { query }) => json(await readVersions(query())));
@@ -82,6 +86,14 @@ export const postCheckIn = wrap(async (request, { query }) => {
   if (refused) return refused;
   const { playerId } = await body(request);
   return json({ teamId: await checkIn(query(), playerId) });
+});
+
+export const postVote = wrap(async (request, { query }) => {
+  const refused = crossSite(request);
+  if (refused) return refused;
+  const { voterId, femaleId, maleId } = await body(request);
+  await castVotes(query(), voterId, femaleId, maleId);
+  return json({ voted: true });
 });
 
 export const getSession = wrap(async (request, { env }) => json({ signedIn: isOrganizer(request, env) }));

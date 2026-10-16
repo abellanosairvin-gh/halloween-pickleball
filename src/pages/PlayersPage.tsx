@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useAccess } from '../auth/Access';
 import { CheckInReveal, type Reveal } from '../components/CheckInReveal';
+import { CostumeSection } from '../components/CostumeSection';
 import { Dialog } from '../components/Dialog';
 import { EditIcon } from '../components/EditIcon';
 import { PlayerForm } from '../components/PlayerForm';
@@ -166,6 +167,8 @@ export function PlayersPage() {
           );
         })}
       </div>
+
+      {canEdit && <CostumeSection />}
 
       <CheckInReveal reveal={reveal} onDone={closeReveal} />
       <Dialog open={confirmSelf !== null} onClose={() => setConfirmSelf(null)} title={`Check in as ${confirmSelf?.name ?? ''}?`}>

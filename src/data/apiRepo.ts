@@ -2,7 +2,7 @@ import { normalizeName } from '../domain/roster';
 import type { Snapshot, TableName, TeamId } from '../domain/types';
 import type { AuthClient, Repo } from './repo';
 
-const TABLES: TableName[] = ['players', 'results', 'pairs', 'matches'];
+const TABLES: TableName[] = ['players', 'results', 'pairs', 'matches', 'entrants', 'votes', 'picks'];
 type Versions = Record<TableName, number>;
 
 /** How often an open page checks for changes made elsewhere. Paused while the page is hidden. */
@@ -100,6 +100,15 @@ export function createApiRepo(): Repo {
     setBracketPairs: (bracket, pairs) => act('setBracketPairs', { bracket, pairs }),
     setMatchWinner: (bracket, match, winnerSlot) => act('setMatchWinner', { bracket, match, winnerSlot }),
     resetBracket: (bracket) => act('resetBracket', { bracket }),
+
+    async castVotes(voterId, femaleId, maleId) {
+      await call('/api/vote', { method: 'POST', body: { voterId, femaleId, maleId } });
+    },
+    addCostumePlayer: (playerId) => act('addCostumePlayer', { playerId }),
+    addCostumeGuest: (name, gender) => act('addCostumeGuest', { name: normalizeName(name), gender }),
+    removeCostumeEntrant: (entrantId) => act('removeCostumeEntrant', { entrantId }),
+    clearCostumeVotes: (voterId) => act('clearCostumeVotes', { voterId }),
+    setCostumePick: (gender, entrantId) => act('setCostumePick', { gender, entrantId }),
   };
 }
 

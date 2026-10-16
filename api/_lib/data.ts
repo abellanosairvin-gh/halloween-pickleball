@@ -2,6 +2,9 @@ import type {
   BracketId,
   BracketMatch,
   BracketPair,
+  CostumeEntrant,
+  CostumePick,
+  CostumeVote,
   GameResult,
   Gender,
   MatchKey,
@@ -16,7 +19,7 @@ import type { Query, Row } from './db.js';
 /** A request the organizer's screens should never send; answered with 400. */
 export class BadRequest extends Error {}
 
-export const TABLES: readonly TableName[] = ['players', 'results', 'pairs', 'matches'];
+export const TABLES: readonly TableName[] = ['players', 'results', 'pairs', 'matches', 'entrants', 'votes', 'picks'];
 export type Versions = Record<TableName, number>;
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : v === null || v === undefined ? null : String(v));
@@ -51,14 +54,42 @@ const toMatch = (r: Row): BracketMatch => ({
   winnerSlot: Number(r.winner_slot),
 });
 
+const toEntrant = (r: Row): CostumeEntrant => ({
+  id: String(r.id),
+  playerId: r.player_id === null ? null : String(r.player_id),
+  guestName: r.guest === null ? null : String(r.guest),
+  guestGender: (r.guest_gender as Gender | null) ?? null,
+});
+
+const toVote =
+  (organizer: boolean) =>
+  (r: Row): CostumeVote => ({
+    voterId: String(r.voter_id),
+    gender: r.gender as Gender,
+    entrantId: organizer ? String(r.entrant_id) : null,
+  });
+
+const toPick = (r: Row): CostumePick => ({ gender: r.gender as Gender, entrantId: String(r.entrant_id) });
+
 const PLAYER_COLUMNS = 'id, name, gender, skill, checked_in_at, team_id';
 const RESULT_COLUMNS = 'id, player_id, outcome, created_at';
+const ENTRANT_COLUMNS = 'id, player_id, guest, guest_gender';
 
-const READ: { [T in TableName]: (q: Query) => Promise<Snapshot[T]> } = {
+/** `organizer` is true for the organizer's session: only they see who each costume vote went to. */
+const READ: { [T in TableName]: (q: Query, organizer: boolean) => Promise<Snapshot[T]> } = {
   players: async (q) => (await q(`select ${PLAYER_COLUMNS} from players order by name`)).map(toPlayer),
   results: async (q) => (await q(`select ${RESULT_COLUMNS} from results order by created_at, id`)).map(toResult),
   pairs: async (q) => (await q('select bracket, slot, team_id, player1_id, player2_id from bracket_pairs')).map(toPair),
   matches: async (q) => (await q('select bracket, match, winner_slot from bracket_matches')).map(toMatch),
+  entrants: async (q) =>
+    (await q(`select ${ENTRANT_COLUMNS} from costume_entrants order by created_at, id`)).map(toEntrant),
+  votes: async (q, organizer) =>
+    (
+      await q(
+        'select coalesce(voter_player_id, voter_entrant_id) as voter_id, gender, entrant_id from costume_votes order by created_at',
+      )
+    ).map(toVote(organizer)),
+  picks: async (q) => (await q('select gender, entrant_id from costume_picks')).map(toPick),
 };
 
 export async function readVersions(q: Query): Promise<Versions> {
@@ -70,12 +101,12 @@ export async function readVersions(q: Query): Promise<Versions> {
  * The requested tables plus the change counters read just before them, so a client that polls
  * the counters afterwards never misses a change (at worst it refetches once more than needed).
  */
-export async function readState(q: Query, tables: readonly TableName[]) {
+export async function readState(q: Query, tables: readonly TableName[], organizer = false) {
   const versions = await readVersions(q);
   const data: Partial<Snapshot> = {};
   await Promise.all(
     tables.map(async (t) => {
-      (data as Record<TableName, unknown>)[t] = await READ[t](q);
+      (data as Record<TableName, unknown>)[t] = await READ[t](q, organizer);
     }),
   );
   return { versions, data };
@@ -84,6 +115,16 @@ export async function readState(q: Query, tables: readonly TableName[]) {
 export async function checkIn(q: Query, playerId: unknown): Promise<TeamId> {
   const rows = await q('select check_in_player($1) as team', [text(playerId, 'playerId')]);
   return rows[0].team as TeamId;
+}
+
+/** A Best in Costume vote. Open to everyone; the database refuses a second vote by the same voter. */
+export async function castVotes(q: Query, voterId: unknown, femaleId: unknown, maleId: unknown): Promise<void> {
+  const pick = (value: unknown, field: string) => (value === null || value === undefined ? null : text(value, field));
+  await q('select cast_costume_votes($1, $2, $3)', [
+    text(voterId, 'voterId'),
+    pick(femaleId, 'femaleId'),
+    pick(maleId, 'maleId'),
+  ]);
 }
 
 // Argument checks: the database constraints are the real guard, these just give clear errors.
@@ -188,6 +229,54 @@ export const organizerActions: Record<string, (q: Query, a: Args) => Promise<unk
 
   async resetBracket(q, a) {
     await q('select reset_bracket($1)', [oneOf(a.bracket, 'bracket', BRACKETS)]);
+    return null;
+  },
+
+  async addCostumePlayer(q, a) {
+    const rows = await q(`insert into costume_entrants (player_id) values ($1) returning ${ENTRANT_COLUMNS}`, [
+      text(a.playerId, 'playerId'),
+    ]);
+    return toEntrant(rows[0]);
+  },
+
+  async addCostumeGuest(q, a) {
+    const name = cleanName(a.name);
+    if (name.length > 40) throw new BadRequest('Keep the name under 40 characters.');
+    // A guest who shares a player's name is almost always that player: add them from the player list instead.
+    const rows = await q(
+      `insert into costume_entrants (guest, guest_gender)
+       select $1, $2 where not exists (select 1 from players where lower(name) = lower($1))
+       returning ${ENTRANT_COLUMNS}`,
+      [name, oneOf(a.gender, 'gender', GENDERS)],
+    );
+    if (rows.length === 0) throw new BadRequest(`${name} is on the player list. Add them from there.`);
+    return toEntrant(rows[0]);
+  },
+
+  async removeCostumeEntrant(q, a) {
+    await q('delete from costume_entrants where id = $1', [text(a.entrantId, 'entrantId')]);
+    return null;
+  },
+
+  /** Clears a voter's votes so they can vote again, e.g. when someone else voted in their name. */
+  async clearCostumeVotes(q, a) {
+    await q('delete from costume_votes where coalesce(voter_player_id, voter_entrant_id) = $1', [
+      text(a.voterId, 'voterId'),
+    ]);
+    return null;
+  },
+
+  async setCostumePick(q, a) {
+    const gender = oneOf(a.gender, 'gender', GENDERS);
+    if (a.entrantId === null || a.entrantId === undefined) {
+      await q('delete from costume_picks where gender = $1', [gender]);
+    } else {
+      await q(
+        `insert into costume_picks (gender, entrant_id) values ($1, $2)
+         on conflict (gender) do update set entrant_id = excluded.entrant_id`,
+        [gender, text(a.entrantId, 'entrantId')],
+      );
+    }
     return null;
   },
 };

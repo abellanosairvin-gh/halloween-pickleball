@@ -49,11 +49,38 @@ export interface BracketMatch {
   winnerSlot: number;
 }
 
+/** Someone in the Best in Costume line-up: a player, or a guest who isn't playing. */
+export interface CostumeEntrant {
+  id: string;
+  /** Set for a player; their name and gender come from the player list. */
+  playerId: string | null;
+  /** Set for a guest who isn't playing. */
+  guestName: string | null;
+  guestGender: Gender | null;
+}
+
+/** One vote for one award. A voter is a player id, or the entrant id of a guest who isn't playing. */
+export interface CostumeVote {
+  voterId: string;
+  gender: Gender;
+  /** Who got the vote. Only the organizer sees it; guests get null, so they only learn who has voted. */
+  entrantId: string | null;
+}
+
+/** The organizer's pick when the most votes for an award are tied. */
+export interface CostumePick {
+  gender: Gender;
+  entrantId: string;
+}
+
 export interface Snapshot {
   players: Player[];
   results: GameResult[];
   pairs: BracketPair[];
   matches: BracketMatch[];
+  entrants: CostumeEntrant[];
+  votes: CostumeVote[];
+  picks: CostumePick[];
 }
 
 export type TableName = keyof Snapshot;

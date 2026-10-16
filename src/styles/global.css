@@ -252,7 +252,8 @@ a {
 
 .tabs__inner {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
   max-width: var(--max-width);
   margin: 0 auto;
 }
@@ -2415,4 +2416,259 @@ a {
 .login__note {
   color: var(--ink-soft);
   font-size: var(--step--1);
+}
+
+/* Best in costume --------------------------------------------------------------------- */
+
+.costume {
+  margin-top: 40px;
+}
+
+.costume__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.costume__head .section-title {
+  margin-bottom: 0;
+}
+
+.costume__intro {
+  margin: 6px 0 14px;
+}
+
+/* A thin bar along the bottom of each row shows votes relative to the leader. */
+.costume__row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 4px 4px 4px 10px;
+}
+
+.costume__who {
+  display: grid;
+  min-width: 0;
+}
+
+.costume__name {
+  font-size: var(--step--1);
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.costume__note {
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+}
+
+.costume__count {
+  min-width: 2ch;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.costume__remove {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid var(--rule);
+  border-radius: 50%;
+  color: var(--ink-soft);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.costume__bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: calc(var(--share) * 100%);
+  height: 3px;
+  background: var(--ink);
+  opacity: 0.35;
+}
+
+.costume__row.is-winner {
+  background: color-mix(in srgb, var(--win) 14%, var(--surface));
+}
+
+.costume__row.is-winner .costume__bar {
+  background: var(--win);
+  opacity: 1;
+}
+
+.costume__row.is-winner .member__tie {
+  color: var(--win);
+}
+
+.costume__tie {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1.5px dashed var(--rule);
+  border-radius: var(--radius-control);
+  font-size: var(--step--1);
+  font-weight: 600;
+}
+
+.costume__tie-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.costume__tie-picks .btn[aria-pressed='true'] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+}
+
+/* The Tournament tab hides .segmented on wide screens; this one always shows. */
+.costume__mode {
+  display: inline-flex;
+  margin-bottom: 4px;
+}
+
+.costume__players {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.costume__add,
+.vote-voter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+
+.costume__add .pick-list__name,
+.vote-voter .pick-list__name {
+  flex: 1;
+}
+
+.costume__plus {
+  font-size: 1.4rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.costume__voter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 8px 0 14px;
+}
+
+/* Party page: the vote. */
+.vote-search {
+  display: block;
+  max-width: 420px;
+  margin-bottom: 12px;
+}
+
+.vote-voters {
+  background: var(--surface);
+}
+
+.vote-voter:disabled {
+  color: var(--ink-soft);
+  cursor: default;
+}
+
+.vote-as {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-bottom: 20px;
+  padding: 6px 6px 6px 14px;
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+
+.vote-group {
+  min-width: 0;
+  margin: 0 0 24px;
+  padding: 0;
+  border: 0;
+}
+
+.vote-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.vote-card {
+  position: relative;
+}
+
+.vote-card input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+}
+
+.vote-card span {
+  display: grid;
+  place-items: center;
+  min-height: 56px;
+  padding: 6px 10px;
+  border: 1.5px solid var(--rule);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  font-weight: 700;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.vote-card input:checked + span {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.vote-card input:focus-visible + span {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.vote-submit {
+  display: grid;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.vote-done {
+  display: grid;
+  gap: 6px;
+  padding: 20px;
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+
+.vote-done__title {
+  font-family: var(--font-display);
+  font-size: var(--step-2);
+  font-weight: 800;
+  line-height: 1.1;
 }

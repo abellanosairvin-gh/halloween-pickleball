@@ -16,7 +16,13 @@ interface AccessValue {
 }
 
 export const ORGANIZER_PATHS: Paths = { players: '/players', teams: '/teams', tournament: '/tournament' };
-export const PARTY_PATHS: Paths = { players: '/party/checkin', teams: '/party/teams', tournament: '/party/tournament' };
+/** The party page also has the Best in Costume vote, which the organizer runs from the Players tab. */
+export const PARTY_PATHS: Paths & { costume: string } = {
+  players: '/party/checkin',
+  teams: '/party/teams',
+  tournament: '/party/tournament',
+  costume: '/party/costume',
+};
 
 const ME_KEY = 'hpp-party-me-v1';
 

@@ -53,7 +53,9 @@ export function EventDataProvider({ children }: { children: ReactNode }) {
     loadAll();
     const unsubscribe = repo.subscribe((t) => refresh([t]));
     // Catch up after the phone wakes or the tab comes back into view.
-    const onVisible = () => document.visibilityState === 'visible' && refresh(['players', 'results', 'pairs', 'matches']);
+    const onVisible = () =>
+      document.visibilityState === 'visible' &&
+      refresh(['players', 'results', 'pairs', 'matches', 'entrants', 'votes', 'picks']);
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       unsubscribe();

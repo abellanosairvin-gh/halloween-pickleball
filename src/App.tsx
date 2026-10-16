@@ -6,6 +6,7 @@ import { AppShell } from './components/AppShell';
 import { PartyShell } from './components/PartyShell';
 import { ToastProvider } from './components/Toast';
 import { EventDataProvider } from './data/EventData';
+import { CostumeVotePage } from './pages/CostumeVotePage';
 import { PlayersPage } from './pages/PlayersPage';
 import { QrPage } from './pages/QrPage';
 import { TeamsPage } from './pages/TeamsPage';
@@ -36,6 +37,7 @@ export function App() {
               <Route path="checkin" element={<PlayersPage />} />
               <Route path="teams" element={<TeamsPage />} />
               <Route path="tournament" element={<TournamentPage />} />
+              <Route path="costume" element={<CostumeVotePage />} />
             </Route>
 
             <Route
