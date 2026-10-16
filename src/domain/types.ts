@@ -73,6 +73,11 @@ export interface CostumePick {
   entrantId: string;
 }
 
+/** Voting stays closed until the organizer opens it, once the line-up is complete. */
+export interface CostumeVoting {
+  open: boolean;
+}
+
 export interface Snapshot {
   players: Player[];
   results: GameResult[];
@@ -81,6 +86,7 @@ export interface Snapshot {
   entrants: CostumeEntrant[];
   votes: CostumeVote[];
   picks: CostumePick[];
+  voting: CostumeVoting;
 }
 
 export type TableName = keyof Snapshot;

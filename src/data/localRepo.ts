@@ -9,7 +9,7 @@ import {
   validWinners,
 } from '../domain/bracket';
 import { lockedPairMessage, lockedPairPlayerIds, nameProblem, normalizeName } from '../domain/roster';
-import { entrantGender } from '../domain/costume';
+import { entrantGender, lineUp } from '../domain/costume';
 import { isPairEligible, MIN_PAIR_GAMES, playerRecords } from '../domain/standings';
 import type { BracketId, BracketMatch, BracketPair, Gender, Player, Snapshot, TableName } from '../domain/types';
 import type { AuthClient, Repo } from './repo';
@@ -38,6 +38,7 @@ function seedSnapshot(): Snapshot {
     entrants: [],
     votes: [],
     picks: [],
+    voting: { open: false },
   };
 }
 
@@ -92,6 +93,7 @@ export function createLocalRepo(): Repo {
     memory.entrants ??= [];
     memory.votes ??= [];
     memory.picks ??= [];
+    memory.voting ??= { open: false };
     // Stores saved before mixed doubles named each bracket by gender and played a final in it.
     type Saved<T> = T & { gender?: Gender };
     const named = <T extends { bracket: BracketId }>({ gender, ...rest }: Saved<T>) =>
@@ -274,6 +276,7 @@ export function createLocalRepo(): Repo {
     async castVotes(voterId, femaleId, maleId) {
       await tick();
       const s = clone();
+      if (!s.voting.open) throw new Error('Voting isn’t open right now. Check back when the organizer opens it.');
       const voter =
         s.players.find((p) => p.id === voterId)?.name ??
         s.entrants.find((e) => e.id === voterId && e.guestName !== null)?.guestName;
@@ -335,6 +338,15 @@ export function createLocalRepo(): Repo {
       const s = clone();
       s.votes = s.votes.filter((v) => v.voterId !== voterId);
       write(s, ['votes']);
+    },
+
+    async setCostumeVoting(open) {
+      const s = clone();
+      if (open && (['F', 'M'] as const).some((g) => lineUp(g, s.entrants, s.players).length === 0)) {
+        throw new Error('Add at least one woman and one man to the costume line-up before opening voting.');
+      }
+      s.voting = { open };
+      write(s, ['voting']);
     },
 
     async setCostumePick(gender, entrantId) {

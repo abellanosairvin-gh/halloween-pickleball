@@ -63,7 +63,16 @@ describe('guests (party page)', () => {
     expect(data.players).toHaveLength(40);
     expect(data.results).toEqual([]);
     const versions = await (await getVersions(request('/api/versions'), deps)).json();
-    expect(Object.keys(versions).sort()).toEqual(['entrants', 'matches', 'pairs', 'picks', 'players', 'results', 'votes']);
+    expect(Object.keys(versions).sort()).toEqual([
+      'entrants',
+      'matches',
+      'pairs',
+      'picks',
+      'players',
+      'results',
+      'votes',
+      'voting',
+    ]);
   });
 
   it('can read only some tables', async () => {
@@ -105,6 +114,7 @@ describe('guests (party page)', () => {
       ['addCostumeGuest', { name: 'Intruder', gender: 'M' }],
       ['clearCostumeVotes', { voterId: player.id }],
       ['setCostumePick', { gender: 'F', entrantId: null }],
+      ['setCostumeVoting', { open: true }],
     ];
     for (const [action, args] of attempts) {
       const response = await postOrganizer(request('/api/organizer', { method: 'POST', body: { action, args } }), deps);
@@ -281,8 +291,36 @@ describe('best in costume', () => {
     const [m1, voter] = players.filter((p) => p.gender === 'M');
     const add = async (playerId: string) => (await (await organizer('addCostumePlayer', { playerId })).json()).result;
     const guest = (await (await organizer('addCostumeGuest', { name: 'Count  Dracula', gender: 'M' })).json()).result;
-    return { w1: await add(w1.id), w2: await add(w2.id), m1: await add(m1.id), guest, w1Player: w1, m1Player: m1, voter };
+    const entered = { w1: await add(w1.id), w2: await add(w2.id), m1: await add(m1.id), guest };
+    expect((await organizer('setCostumeVoting', { open: true })).status).toBe(200);
+    return { ...entered, w1Player: w1, m1Player: m1, voter };
   }
+
+  it('keeps voting closed until the organizer opens it with someone in each line-up', async () => {
+    const players = (await state()).players;
+    const woman = players.find((p) => p.gender === 'F')!;
+    const voter = players.find((p) => p.gender === 'M')!;
+    expect((await state()).voting).toEqual({ open: false });
+    const entrant = (await (await organizer('addCostumePlayer', { playerId: woman.id })).json()).result;
+
+    const early = await vote({ voterId: voter.id, femaleId: entrant.id, maleId: null });
+    expect(early.status).toBe(400);
+    expect((await early.json()).error).toMatch('isn’t open');
+
+    const noMen = await organizer('setCostumeVoting', { open: true });
+    expect(noMen.status).toBe(400);
+    expect((await noMen.json()).error).toMatch('one woman and one man');
+
+    await organizer('addCostumeGuest', { name: 'Gomez', gender: 'M' });
+    expect((await organizer('setCostumeVoting', { open: true })).status).toBe(200);
+    expect((await state()).voting).toEqual({ open: true });
+    expect((await vote({ voterId: voter.id, femaleId: entrant.id, maleId: null })).status).toBe(200);
+
+    await organizer('setCostumeVoting', { open: false });
+    const late = await vote({ voterId: woman.id, femaleId: null, maleId: (await state()).entrants[1].id });
+    expect(late.status).toBe(400);
+    expect(await votesAs()).toHaveLength(1);
+  });
 
   it('builds the line-up from players and guests who are not playing', async () => {
     const { guest, w1Player } = await lineUp();

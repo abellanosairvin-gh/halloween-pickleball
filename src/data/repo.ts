@@ -44,6 +44,8 @@ export interface Repo {
   removeCostumeEntrant(entrantId: string): Promise<void>;
   /** Clears a voter's votes so they can vote again. */
   clearCostumeVotes(voterId: string): Promise<void>;
+  /** Opens or closes voting. Opening needs at least one woman and one man in the line-up. */
+  setCostumeVoting(open: boolean): Promise<void>;
   /** The organizer's winner among tied leaders, or null to clear it. */
   setCostumePick(gender: Gender, entrantId: string | null): Promise<void>;
 }

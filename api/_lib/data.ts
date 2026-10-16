@@ -5,6 +5,7 @@ import type {
   CostumeEntrant,
   CostumePick,
   CostumeVote,
+  CostumeVoting,
   GameResult,
   Gender,
   MatchKey,
@@ -19,7 +20,16 @@ import type { Query, Row } from './db.js';
 /** A request the organizer's screens should never send; answered with 400. */
 export class BadRequest extends Error {}
 
-export const TABLES: readonly TableName[] = ['players', 'results', 'pairs', 'matches', 'entrants', 'votes', 'picks'];
+export const TABLES: readonly TableName[] = [
+  'players',
+  'results',
+  'pairs',
+  'matches',
+  'entrants',
+  'votes',
+  'picks',
+  'voting',
+];
 export type Versions = Record<TableName, number>;
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : v === null || v === undefined ? null : String(v));
@@ -90,6 +100,10 @@ const READ: { [T in TableName]: (q: Query, organizer: boolean) => Promise<Snapsh
       )
     ).map(toVote(organizer)),
   picks: async (q) => (await q('select gender, entrant_id from costume_picks')).map(toPick),
+  voting: async (q): Promise<CostumeVoting> => {
+    const rows = await q('select opened_at from costume_voting');
+    return { open: rows[0]?.opened_at != null };
+  },
 };
 
 export async function readVersions(q: Query): Promise<Versions> {
@@ -263,6 +277,12 @@ export const organizerActions: Record<string, (q: Query, a: Args) => Promise<unk
     await q('delete from costume_votes where coalesce(voter_player_id, voter_entrant_id) = $1', [
       text(a.voterId, 'voterId'),
     ]);
+    return null;
+  },
+
+  async setCostumeVoting(q, a) {
+    if (typeof a.open !== 'boolean') throw new BadRequest('Missing open.');
+    await q('select set_costume_voting($1)', [a.open]);
     return null;
   },
 

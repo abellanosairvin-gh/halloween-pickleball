@@ -11,8 +11,9 @@ import { useToast } from './Toast';
 export function CostumeSection() {
   const { data, run } = useEventData();
   const toast = useToast();
-  const { players, entrants, votes } = data!;
+  const { players, entrants, votes, voting } = data!;
   const [adding, setAdding] = useState(false);
+  const [confirmVoting, setConfirmVoting] = useState(false);
   const [showVoters, setShowVoters] = useState(false);
   const [removing, setRemoving] = useState<CostumeEntrant | null>(null);
 
@@ -30,6 +31,7 @@ export function CostumeSection() {
           <span className="section-count">
             {votedCount} of {voterCount} voted
           </span>
+          <span className={`costume__status ${voting.open ? 'is-open' : ''}`}>{voting.open ? 'Voting open' : 'Voting closed'}</span>
         </h2>
         <div className="toolbar__actions">
           <button type="button" className="btn btn--small btn--quiet" disabled={votedCount === 0} onClick={() => setShowVoters(true)}>
@@ -38,10 +40,19 @@ export function CostumeSection() {
           <button type="button" className="btn btn--small" onClick={() => setAdding(true)}>
             Add costume
           </button>
+          <button
+            type="button"
+            className={`btn btn--small ${voting.open ? 'btn--danger-quiet' : 'btn--primary'}`}
+            onClick={() => setConfirmVoting(true)}
+          >
+            {voting.open ? 'Close voting' : 'Open voting'}
+          </button>
         </div>
       </div>
       <p className="page-meta costume__intro">
-        Guests vote on the party page’s Costume tab: one woman and one man each, once. Only you see the counts.
+        {voting.open
+          ? 'Guests are voting on the party page’s Costume tab: one woman and one man each, once. Only you see the counts.'
+          : 'Add everyone in costume, then open voting. Guests vote once and can’t change it, so anyone added after they vote misses out on their vote.'}
       </p>
 
       <div className="roster-columns">
@@ -50,6 +61,27 @@ export function CostumeSection() {
         ))}
       </div>
 
+      <ConfirmDialog
+        open={confirmVoting}
+        tone={voting.open ? 'danger' : 'primary'}
+        title={voting.open ? 'Close voting?' : 'Open voting?'}
+        message={
+          voting.open
+            ? 'Guests can’t vote until you open it again. Votes already cast are kept.'
+            : `Guests can vote on the party page’s Costume tab right away. Is everyone in costume on the list? There are ${
+                entrants.length
+              } in the line-up now, and each guest votes only once.`
+        }
+        confirmLabel={voting.open ? 'Close voting' : 'Open voting'}
+        onConfirm={() => {
+          const open = !voting.open;
+          void run(['voting'], async (r) => {
+            await r.setCostumeVoting(open);
+            toast.show(open ? 'Voting is open' : 'Voting is closed');
+          });
+        }}
+        onCancel={() => setConfirmVoting(false)}
+      />
       <CostumeForm open={adding} onClose={() => setAdding(false)} />
       <VotersDialog open={showVoters} onClose={() => setShowVoters(false)} />
       <ConfirmDialog

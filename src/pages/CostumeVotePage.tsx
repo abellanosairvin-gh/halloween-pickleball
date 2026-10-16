@@ -31,7 +31,7 @@ const GENDERS: Gender[] = ['F', 'M'];
 export function CostumeVotePage() {
   const { data, run } = useEventData();
   const { meId } = useAccess();
-  const { players, entrants, votes } = data!;
+  const { players, entrants, votes, voting } = data!;
   const [votedAs, setVotedAs] = useState(readVoted);
   const [chosenId, setChosenId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -73,11 +73,14 @@ export function CostumeVotePage() {
     );
   }
 
-  if (entrants.length === 0) {
+  if (!voting.open) {
     return (
       <>
         {head}
-        <p className="empty">The costume line-up isn’t ready yet. Check back once everyone has arrived.</p>
+        <div className="vote-done" role="status">
+          <p className="vote-done__title">Voting hasn’t opened yet</p>
+          <p>It opens once everyone in costume is on the list. This page updates by itself when it does.</p>
+        </div>
       </>
     );
   }

@@ -2435,6 +2435,21 @@ a {
   margin-bottom: 0;
 }
 
+.costume__status {
+  padding: 0 8px;
+  border: 1.5px solid var(--rule);
+  border-radius: var(--radius-pill);
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1.6;
+}
+
+.costume__status.is-open {
+  border-color: var(--win);
+  color: var(--win);
+}
+
 .costume__intro {
   margin: 6px 0 14px;
 }

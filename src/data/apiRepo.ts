@@ -2,7 +2,7 @@ import { normalizeName } from '../domain/roster';
 import type { Snapshot, TableName, TeamId } from '../domain/types';
 import type { AuthClient, Repo } from './repo';
 
-const TABLES: TableName[] = ['players', 'results', 'pairs', 'matches', 'entrants', 'votes', 'picks'];
+const TABLES: TableName[] = ['players', 'results', 'pairs', 'matches', 'entrants', 'votes', 'picks', 'voting'];
 type Versions = Record<TableName, number>;
 
 /** How often an open page checks for changes made elsewhere. Paused while the page is hidden. */
@@ -108,6 +108,7 @@ export function createApiRepo(): Repo {
     addCostumeGuest: (name, gender) => act('addCostumeGuest', { name: normalizeName(name), gender }),
     removeCostumeEntrant: (entrantId) => act('removeCostumeEntrant', { entrantId }),
     clearCostumeVotes: (voterId) => act('clearCostumeVotes', { voterId }),
+    setCostumeVoting: (open) => act('setCostumeVoting', { open }),
     setCostumePick: (gender, entrantId) => act('setCostumePick', { gender, entrantId }),
   };
 }
