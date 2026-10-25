@@ -1,4 +1,6 @@
-# Irvin's Dink or Treat Halloween Birthday Party
+# HalloVin Dink or Treat!
+
+Irvin's Birthday Pickleball Halloween Party.
 
 Organizer site for the party: check players in (which assigns their team), record wins and losses during team play, and run the women's and men's doubles brackets.
 
