@@ -2690,9 +2690,10 @@ a {
   border: 0;
 }
 
+/* Three across on a phone, so a line-up of photos fits without much scrolling. */
 .vote-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: 8px;
 }
 
@@ -2734,26 +2735,29 @@ a {
 }
 
 .vote-card__name {
-  padding: 8px 10px;
+  padding: 6px;
+  font-size: var(--step--1);
+  line-height: 1.2;
 }
 
-/* A costume photo in a vote card or the gallery: portrait, cropped to fill. */
+/* A costume photo in a vote card or the gallery: square, cropped toward the top where faces usually are. */
 .photo-tile__img {
   width: 100%;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 1;
   object-fit: cover;
+  object-position: center 30%;
   background: var(--page);
 }
 
 /* Sits above the radio that covers the card, so it opens the photo instead of picking. */
 .vote-card__zoom {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 4px;
+  right: 4px;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: 0;
   border-radius: 50%;
