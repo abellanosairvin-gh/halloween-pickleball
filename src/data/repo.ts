@@ -46,6 +46,8 @@ export interface Repo {
   ballotStatus(token: string): Promise<BallotStatus | null>;
   addCostumePlayer(playerId: string): Promise<CostumeEntrant>;
   addCostumeGuest(name: string, gender: Gender): Promise<CostumeEntrant>;
+  /** Adds or replaces the photo of someone in the line-up (a base64 JPEG), or removes it when image is null. */
+  setCostumePhoto(entrantId: string, image: string | null): Promise<void>;
   /** Also deletes the votes they received, and the votes they cast if they're a guest. */
   removeCostumeEntrant(entrantId: string): Promise<void>;
   /** Clears a voter's ballot and votes so they can vote again. */

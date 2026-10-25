@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { Deps } from '../api/_lib/handlers';
 import {
   deleteSession,
+  getPhoto,
   getSession,
   getState,
   getVersions,
@@ -117,6 +118,7 @@ describe('guests (party page)', () => {
       ['clearCostumeVotes', { voterId: player.id }],
       ['setCostumePick', { gender: 'F', entrantId: null }],
       ['setCostumeVoting', { open: true }],
+      ['setCostumePhoto', { entrantId: '00000000-0000-0000-0000-000000000000', image: null }],
     ];
     for (const [action, args] of attempts) {
       const response = await postOrganizer(request('/api/organizer', { method: 'POST', body: { action, args } }), deps);
@@ -464,5 +466,67 @@ describe('best in costume', () => {
     const deleted = await organizer('addCostumePlayer', { playerId: m1Player.id });
     expect(deleted.status).toBe(409);
     expect((await deleted.json()).error).toMatch('isn’t on the list');
+  });
+
+  describe('photos', () => {
+    // Just enough of a JPEG for the server: it checks the FF D8 FF start, the browser does the rest.
+    const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
+    const photo = async (url: string) => getPhoto(request(url), deps);
+
+    it('lets the organizer add, replace and remove a photo that everyone can see', async () => {
+      const woman = (await state()).players.find((p) => p.gender === 'F')!;
+      const entrant = (await (await organizer('addCostumePlayer', { playerId: woman.id })).json()).result;
+      expect(entrant.photoUrl).toBeNull();
+      const before = await (await getVersions(request('/api/versions'), deps)).json();
+
+      const added = await organizer('setCostumePhoto', { entrantId: entrant.id, image: JPEG.toString('base64') });
+      expect(added.status).toBe(200);
+      const url = (await state()).entrants[0].photoUrl!;
+      expect(url).toBe((await added.json()).result);
+      const after = await (await getVersions(request('/api/versions'), deps)).json();
+      expect(after.entrants).toBeGreaterThan(before.entrants);
+
+      const served = await photo(url);
+      expect(served.status).toBe(200);
+      expect(served.headers.get('content-type')).toBe('image/jpeg');
+      expect(served.headers.get('cache-control')).toMatch('immutable');
+      expect(Buffer.from(await served.arrayBuffer())).toEqual(JPEG);
+
+      // A new photo gets a new link, so a cached copy of the old one is never shown in its place.
+      const other = Buffer.from([0xff, 0xd8, 0xff, 0xe1, 9, 9]);
+      await organizer('setCostumePhoto', { entrantId: entrant.id, image: other.toString('base64') });
+      const replaced = (await state()).entrants[0].photoUrl!;
+      expect(replaced).not.toBe(url);
+      expect((await photo(url)).status).toBe(404);
+      expect(Buffer.from(await (await photo(replaced)).arrayBuffer())).toEqual(other);
+
+      await organizer('setCostumePhoto', { entrantId: entrant.id, image: null });
+      expect((await state()).entrants[0].photoUrl).toBeNull();
+      expect((await photo(replaced)).status).toBe(404);
+    });
+
+    it('takes only JPEGs, for someone still in the line-up', async () => {
+      const woman = (await state()).players.find((p) => p.gender === 'F')!;
+      const entrant = (await (await organizer('addCostumePlayer', { playerId: woman.id })).json()).result;
+      const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]).toString('base64');
+      for (const image of [png, '<svg onload=alert(1)>', 42]) {
+        const response = await organizer('setCostumePhoto', { entrantId: entrant.id, image });
+        expect(response.status).toBe(400);
+        expect((await response.json()).error).toMatch('JPEG');
+      }
+      const huge = Buffer.concat([JPEG, Buffer.alloc(2_100_000)]).toString('base64');
+      expect((await (await organizer('setCostumePhoto', { entrantId: entrant.id, image: huge })).json()).error).toMatch('too big');
+
+      await organizer('setCostumePhoto', { entrantId: entrant.id, image: JPEG.toString('base64') });
+      const url = (await state()).entrants[0].photoUrl!;
+      await organizer('removeCostumeEntrant', { entrantId: entrant.id });
+      expect((await photo(url)).status).toBe(404);
+      const gone = await organizer('setCostumePhoto', { entrantId: entrant.id, image: JPEG.toString('base64') });
+      expect(gone.status).toBe(409);
+      expect((await gone.json()).error).toMatch('isn’t in the costume line-up');
+
+      expect((await photo('/api/photo?id=not-a-uuid')).status).toBe(404);
+      expect((await photo('/api/photo')).status).toBe(404);
+    });
   });
 });

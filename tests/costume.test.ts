@@ -13,10 +13,10 @@ const player = (id: string, name: string, gender: 'F' | 'M'): Player => ({
 
 const players = [player('p1', 'Wanda', 'F'), player('p2', 'Elvira', 'F'), player('p3', 'Victor', 'M')];
 const entrants: CostumeEntrant[] = [
-  { id: 'e1', playerId: 'p1', guestName: null, guestGender: null },
-  { id: 'e2', playerId: 'p2', guestName: null, guestGender: null },
-  { id: 'e3', playerId: null, guestName: 'Morticia', guestGender: 'F' },
-  { id: 'e4', playerId: null, guestName: 'Gomez', guestGender: 'M' },
+  { id: 'e1', playerId: 'p1', guestName: null, guestGender: null, photoUrl: null },
+  { id: 'e2', playerId: 'p2', guestName: null, guestGender: null, photoUrl: null },
+  { id: 'e3', playerId: null, guestName: 'Morticia', guestGender: 'F', photoUrl: null },
+  { id: 'e4', playerId: null, guestName: 'Gomez', guestGender: 'M', photoUrl: null },
 ];
 const forF = (voterId: string, entrantId: string): CostumeVote => ({ voterId, gender: 'F', entrantId });
 

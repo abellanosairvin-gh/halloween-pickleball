@@ -108,7 +108,7 @@ export function createLocalRepo(): Repo {
     const raw = safeGet(STORE_KEY);
     memory = raw ? (JSON.parse(raw) as Store) : seedSnapshot();
     // Stores saved before Best in Costume voting have no costume tables.
-    memory.entrants ??= [];
+    memory.entrants = (memory.entrants ?? []).map((e) => ({ ...e, photoUrl: e.photoUrl ?? null }));
     memory.votes ??= [];
     memory.picks ??= [];
     const voting = memory.voting as Partial<Snapshot['voting']> | undefined;
@@ -347,7 +347,7 @@ export function createLocalRepo(): Repo {
       const s = clone();
       if (!s.players.some((p) => p.id === playerId)) throw new Error('That player isn’t on the list any more. Refresh and try again.');
       if (s.entrants.some((e) => e.playerId === playerId)) throw new Error('They’re already in the costume line-up.');
-      const entrant = { id: crypto.randomUUID(), playerId, guestName: null, guestGender: null };
+      const entrant = { id: crypto.randomUUID(), playerId, guestName: null, guestGender: null, photoUrl: null };
       s.entrants.push(entrant);
       write(s, ['entrants']);
       return entrant;
@@ -364,10 +364,24 @@ export function createLocalRepo(): Repo {
       if (guestNames(s).some((g) => g.toLowerCase() === clean.toLowerCase())) {
         throw new Error('They’re already in the costume line-up.');
       }
-      const entrant = { id: crypto.randomUUID(), playerId: null, guestName: clean, guestGender: gender };
+      const entrant = { id: crypto.randomUUID(), playerId: null, guestName: clean, guestGender: gender, photoUrl: null };
       s.entrants.push(entrant);
       write(s, ['entrants']);
       return entrant;
+    },
+
+    async setCostumePhoto(entrantId, image) {
+      const s = clone();
+      const entrant = s.entrants.find((e) => e.id === entrantId);
+      if (!entrant) throw new Error('That person isn’t in the costume line-up any more. Refresh and try again.');
+      entrant.photoUrl = image === null ? null : `data:image/jpeg;base64,${image}`;
+      // Photos are big for localStorage, so say so rather than keep one that's gone after a refresh.
+      try {
+        localStorage.setItem(STORE_KEY, JSON.stringify(s));
+      } catch {
+        throw new Error('This browser has no room for more demo photos. Remove one, or reset the demo data.');
+      }
+      write(s, ['entrants']);
     },
 
     async removeCostumeEntrant(entrantId) {

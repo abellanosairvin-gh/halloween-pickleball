@@ -68,11 +68,15 @@ const toMatch = (r: Row): BracketMatch => ({
   winnerSlot: Number(r.winner_slot),
 });
 
+/** Where anyone can load a costume photo. The id changes with every upload, so the link can be cached for good. */
+const photoUrl = (photoId: unknown) => `/api/photo?id=${String(photoId)}`;
+
 const toEntrant = (r: Row): CostumeEntrant => ({
   id: String(r.id),
   playerId: r.player_id === null ? null : String(r.player_id),
   guestName: r.guest === null ? null : String(r.guest),
   guestGender: (r.guest_gender as Gender | null) ?? null,
+  photoUrl: r.photo_id == null ? null : photoUrl(r.photo_id),
 });
 
 const toVote = (r: Row): CostumeVote => ({
@@ -97,7 +101,13 @@ const READ: { [T in TableName]: (q: Query, organizer: boolean) => Promise<Snapsh
   pairs: async (q) => (await q('select bracket, slot, team_id, player1_id, player2_id from bracket_pairs')).map(toPair),
   matches: async (q) => (await q('select bracket, match, winner_slot from bracket_matches')).map(toMatch),
   entrants: async (q) =>
-    (await q(`select ${ENTRANT_COLUMNS} from costume_entrants order by created_at, id`)).map(toEntrant),
+    (
+      await q(
+        `select e.id, e.player_id, e.guest, e.guest_gender, ph.id as photo_id
+         from costume_entrants e left join costume_photos ph on ph.entrant_id = e.id
+         order by e.created_at, e.id`,
+      )
+    ).map(toEntrant),
   votes: async (q, organizer) =>
     organizer
       ? (
@@ -179,6 +189,26 @@ export async function ballotStatus(q: Query, ballot: unknown): Promise<BallotSta
   );
   if (rows.length === 0) return null;
   return { voterId: String(rows[0].voter_id), genders: rows[0].genders as Gender[] };
+}
+
+/** A costume photo's JPEG bytes, or null if there's no photo with that id (any more). Public, like the line-up. */
+export async function readPhoto(q: Query, photoId: unknown): Promise<Uint8Array<ArrayBuffer> | null> {
+  if (typeof photoId !== 'string' || !UUID.test(photoId)) return null;
+  // Base64 rather than bytea, which the Neon HTTP driver and PGlite return differently.
+  const rows = await q(`select encode(data, 'base64') as data from costume_photos where id = $1`, [photoId]);
+  return rows.length === 0 ? null : new Uint8Array(Buffer.from(String(rows[0].data), 'base64'));
+}
+
+/** The largest photo the database takes. The organizer's phone shrinks photos to well under this first. */
+const MAX_PHOTO_BYTES = 2_000_000;
+
+/** A base64 JPEG, as the organizer's phone sends it. Only JPEGs are stored, so a photo link can't serve anything else. */
+function jpeg(value: unknown): string {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) throw new BadRequest('Send the photo as a JPEG.');
+  // Every JPEG starts with the bytes FF D8 FF, which is "/9j/" in base64.
+  if (!value.startsWith('/9j/')) throw new BadRequest('Send the photo as a JPEG.');
+  if ((value.length * 3) / 4 > MAX_PHOTO_BYTES) throw new BadRequest('That photo is too big. Try another one.');
+  return value;
 }
 
 // Argument checks: the database constraints are the real guard, these just give clear errors.
@@ -318,6 +348,22 @@ export const organizerActions: Record<string, (q: Query, a: Args) => Promise<unk
   async removeCostumeEntrant(q, a) {
     await q('delete from costume_entrants where id = $1', [text(a.entrantId, 'entrantId')]);
     return null;
+  },
+
+  /** Adds or replaces the photo of someone in the line-up (a base64 JPEG), or removes it when image is null. */
+  async setCostumePhoto(q, a) {
+    const entrantId = text(a.entrantId, 'entrantId');
+    if (a.image === null || a.image === undefined) {
+      await q('delete from costume_photos where entrant_id = $1', [entrantId]);
+      return null;
+    }
+    const rows = await q(
+      `insert into costume_photos (entrant_id, data) values ($1, decode($2, 'base64'))
+       on conflict (entrant_id) do update set id = gen_random_uuid(), data = excluded.data, created_at = now()
+       returning id`,
+      [entrantId, jpeg(a.image)],
+    );
+    return photoUrl(rows[0].id);
   },
 
   /** Clears a voter's votes so they can vote again, e.g. when someone else voted in their name. */

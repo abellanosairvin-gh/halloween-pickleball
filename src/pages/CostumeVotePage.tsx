@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAccess } from '../auth/Access';
+import { PhotoViewer } from '../components/CostumePhoto';
 import { Dialog } from '../components/Dialog';
 import { useEventData } from '../data/EventData';
 import { eligibleVoters, entrantName, lineUp, type Voter } from '../domain/costume';
 import { GENDER_LABEL } from '../domain/teams';
-import type { BallotStatus, Gender } from '../domain/types';
+import type { BallotStatus, CostumeEntrant, Gender } from '../domain/types';
 import { repo } from '../lib/backend';
 import { readBallot, type StoredBallot, writeBallot } from '../lib/ballotStore';
 
@@ -23,6 +24,7 @@ export function CostumeVotePage() {
   const [picks, setPicks] = useState<Record<Gender, string | null>>({ F: null, M: null });
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [viewing, setViewing] = useState<{ url: string; name: string } | null>(null);
 
   const voters = useMemo(() => eligibleVoters(players, entrants), [players, entrants]);
   const voted = new Set(ballots);
@@ -83,6 +85,7 @@ export function CostumeVotePage() {
         <p className="vote-done__title">{title}</p>
         <p>{text}</p>
       </div>
+      <CostumeGallery />
     </>
   );
 
@@ -198,7 +201,24 @@ export function CostumeVotePage() {
                       checked={pickFor(gender) === e.id}
                       onChange={() => setPicks((prev) => ({ ...prev, [gender]: e.id }))}
                     />
-                    <span>{entrantName(e, players)}</span>
+                    <span className="vote-card__face">
+                      {e.photoUrl && <img className="photo-tile__img" src={e.photoUrl} alt="" loading="lazy" />}
+                      <span className="vote-card__name">{entrantName(e, players)}</span>
+                    </span>
+                    {/* A button inside the label opens the photo without picking them. */}
+                    {e.photoUrl && (
+                      <button
+                        type="button"
+                        className="vote-card__zoom"
+                        aria-label={`See ${entrantName(e, players)}’s photo bigger`}
+                        onClick={(ev) => {
+                          ev.preventDefault();
+                          setViewing({ url: e.photoUrl!, name: entrantName(e, players) });
+                        }}
+                      >
+                        <ZoomIcon />
+                      </button>
+                    )}
                   </label>
                 ))}
               </div>
@@ -216,6 +236,7 @@ export function CostumeVotePage() {
         )}
       </div>
 
+      <PhotoViewer photo={viewing} onClose={() => setViewing(null)} />
       <Dialog open={confirming} onClose={() => setConfirming(false)} title="Cast your votes?">
         <ul className="change-list">
           {awards
@@ -237,5 +258,59 @@ export function CostumeVotePage() {
         </div>
       </Dialog>
     </>
+  );
+}
+
+function ZoomIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+      <path d="M10 3a7 7 0 0 1 5.6 11.2l5.1 5.1-1.4 1.4-5.1-5.1A7 7 0 1 1 10 3zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm-1 2h2v2h2v2h-2v2H9v-2H7V9h2z" />
+    </svg>
+  );
+}
+
+/** Everyone in costume, with their photos, for when guests aren't voting: before it opens, after they vote, once it closes. */
+function CostumeGallery() {
+  const { data } = useEventData();
+  const { players, entrants } = data!;
+  const [viewing, setViewing] = useState<CostumeEntrant | null>(null);
+  if (entrants.length === 0) return null;
+  const name = (e: CostumeEntrant) => entrantName(e, players);
+
+  return (
+    <section className="costume-gallery" aria-labelledby="costume-gallery-title">
+      <h2 id="costume-gallery-title" className="section-title">
+        In costume
+      </h2>
+      {GENDERS.map((gender) => {
+        const list = lineUp(gender, entrants, players);
+        if (list.length === 0) return null;
+        return (
+          <div key={gender} className="vote-group">
+            <h3 className="roster__title">{GENDER_LABEL[gender]}</h3>
+            <ul className="vote-cards">
+              {list.map((e) => (
+                <li key={e.id}>
+                  {e.photoUrl ? (
+                    <button type="button" className="photo-tile" onClick={() => setViewing(e)}>
+                      <img className="photo-tile__img" src={e.photoUrl} alt="" loading="lazy" />
+                      <span className="vote-card__name">{name(e)}</span>
+                    </button>
+                  ) : (
+                    <div className="photo-tile">
+                      <span className="vote-card__name">{name(e)}</span>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+      <PhotoViewer
+        photo={viewing?.photoUrl ? { url: viewing.photoUrl, name: name(viewing) } : null}
+        onClose={() => setViewing(null)}
+      />
+    </section>
   );
 }

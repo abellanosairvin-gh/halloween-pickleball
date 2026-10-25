@@ -112,6 +112,9 @@ export function createApiRepo(onNotOrganizer: () => void = () => {}): Repo {
     },
     addCostumePlayer: (playerId) => act('addCostumePlayer', { playerId }),
     addCostumeGuest: (name, gender) => act('addCostumeGuest', { name: normalizeName(name), gender }),
+    async setCostumePhoto(entrantId, image) {
+      await act('setCostumePhoto', { entrantId, image });
+    },
     removeCostumeEntrant: (entrantId) => act('removeCostumeEntrant', { entrantId }),
     clearCostumeVotes: (voterId) => act('clearCostumeVotes', { voterId }),
     setCostumeVoting: (open) => act('setCostumeVoting', { open }),

@@ -1,5 +1,15 @@
 import type { TableName } from '../../src/domain/types';
-import { BadRequest, ballotStatus, castVotes, checkIn, organizerActions, readState, readVersions, TABLES } from './data.js';
+import {
+  BadRequest,
+  ballotStatus,
+  castVotes,
+  checkIn,
+  organizerActions,
+  readPhoto,
+  readState,
+  readVersions,
+  TABLES,
+} from './data.js';
 import type { Query } from './db.js';
 import { checkPassword, createSessionToken, isOrganizer, type ServerEnv, sessionCookie } from './session.js';
 
@@ -110,6 +120,19 @@ export const postBallot = wrap(async (request, { query }) => {
   if (refused) return refused;
   const { token } = await body(request);
   return json({ ballot: await ballotStatus(query(), token) });
+});
+
+/** A costume photo. Its id changes with every upload, so browsers and the CDN can keep it for good. */
+export const getPhoto = wrap(async (request, { query }) => {
+  const photo = await readPhoto(query(), new URL(request.url).searchParams.get('id'));
+  if (!photo) return fail(404, 'That photo isn’t there any more.');
+  return new Response(photo, {
+    headers: {
+      'content-type': 'image/jpeg',
+      'cache-control': 'public, max-age=31536000, s-maxage=31536000, immutable',
+      'x-content-type-options': 'nosniff',
+    },
+  });
 });
 
 export const getSession = wrap(async (request, { env }) => json({ signedIn: isOrganizer(request, env) }));

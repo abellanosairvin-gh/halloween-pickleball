@@ -1,9 +1,11 @@
-import { type CSSProperties, type FormEvent, useMemo, useState } from 'react';
+import { type ChangeEvent, type CSSProperties, type FormEvent, useMemo, useState } from 'react';
 import { useEventData } from '../data/EventData';
 import { eligibleVoters, entrantName, standing } from '../domain/costume';
 import { MAX_NAME_LENGTH, normalizeName } from '../domain/roster';
 import { GENDER_LABEL } from '../domain/teams';
 import type { CostumeEntrant, Gender } from '../domain/types';
+import { shrinkPhoto } from '../lib/photo';
+import { CameraIcon } from './CostumePhoto';
 import { ConfirmDialog, Dialog } from './Dialog';
 import { useToast } from './Toast';
 
@@ -17,6 +19,7 @@ export function CostumeSection() {
   const [confirmVoting, setConfirmVoting] = useState<boolean | null>(null);
   const [showVoters, setShowVoters] = useState(false);
   const [removing, setRemoving] = useState<CostumeEntrant | null>(null);
+  const [photographing, setPhotographing] = useState<string | null>(null);
 
   const voterCount = eligibleVoters(players, entrants).length;
   const votedCount = ballots.length;
@@ -57,12 +60,13 @@ export function CostumeSection() {
           ? 'Guests are voting on the party page’s Costume tab: one woman and one man each, once. Only you see the counts.'
           : voting.closed
             ? 'Voting is closed and guests can’t vote. Open it again to let more people vote.'
-            : 'Add everyone in costume, then open voting. Guests vote once and can’t change it, so anyone added after they vote misses out on their vote.'}
+            : 'Add everyone in costume, then open voting. Guests vote once and can’t change it, so anyone added after they vote misses out on their vote.'}{' '}
+        Tap the camera beside a name to photograph their costume, so guests can still see it after they change.
       </p>
 
       <div className="roster-columns">
         {(['F', 'M'] as Gender[]).map((gender) => (
-          <CostumeColumn key={gender} gender={gender} onRemove={setRemoving} />
+          <CostumeColumn key={gender} gender={gender} onRemove={setRemoving} onPhoto={(e) => setPhotographing(e.id)} />
         ))}
       </div>
 
@@ -88,6 +92,7 @@ export function CostumeSection() {
         onCancel={() => setConfirmVoting(null)}
       />
       <CostumeForm open={adding} onClose={() => setAdding(false)} />
+      <PhotoDialog entrantId={photographing} onClose={() => setPhotographing(null)} />
       <VotersDialog open={showVoters} onClose={() => setShowVoters(false)} />
       <ConfirmDialog
         open={removing !== null}
@@ -116,7 +121,15 @@ export function CostumeSection() {
   );
 }
 
-function CostumeColumn({ gender, onRemove }: { gender: Gender; onRemove: (entrant: CostumeEntrant) => void }) {
+function CostumeColumn({
+  gender,
+  onRemove,
+  onPhoto,
+}: {
+  gender: Gender;
+  onRemove: (entrant: CostumeEntrant) => void;
+  onPhoto: (entrant: CostumeEntrant) => void;
+}) {
   const { data, run } = useEventData();
   const { players, entrants, votes, picks } = data!;
   const { ranked, leaders, winner } = standing(gender, entrants, players, votes, picks);
@@ -136,6 +149,14 @@ function CostumeColumn({ gender, onRemove }: { gender: Gender; onRemove: (entran
           {ranked.map(({ entrant, votes: count }) => (
             <li key={entrant.id}>
               <div className={`costume__row ${winner?.id === entrant.id ? 'is-winner' : ''}`}>
+                <button
+                  type="button"
+                  className={`costume__thumb ${entrant.photoUrl ? '' : 'is-empty'}`}
+                  onClick={() => onPhoto(entrant)}
+                  aria-label={entrant.photoUrl ? `Photo of ${name(entrant)}` : `Add a photo of ${name(entrant)}`}
+                >
+                  {entrant.photoUrl ? <img src={entrant.photoUrl} alt="" loading="lazy" /> : <CameraIcon />}
+                </button>
                 <span className="costume__who">
                   <span className="costume__name">
                     {name(entrant)}
@@ -184,6 +205,95 @@ function CostumeColumn({ gender, onRemove }: { gender: Gender; onRemove: (entran
         </div>
       )}
     </section>
+  );
+}
+
+/** Takes, replaces or removes the photo of someone in the line-up. Follows the live entrant, so a new photo shows at once. */
+function PhotoDialog({ entrantId, onClose }: { entrantId: string | null; onClose: () => void }) {
+  const { data, run } = useEventData();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const { players, entrants } = data!;
+  const entrant = entrants.find((e) => e.id === entrantId) ?? null;
+  const name = entrant ? entrantName(entrant, players) : '';
+
+  const close = () => {
+    setConfirmRemove(false);
+    onClose();
+  };
+
+  async function choose(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Cleared so picking the same file again still counts as a change.
+    e.target.value = '';
+    if (!file || !entrant) return;
+    setBusy(true);
+    try {
+      const image = await shrinkPhoto(file);
+      const ok = await run(['entrants'], async (r) => {
+        await r.setCostumePhoto(entrant.id, image);
+        return true;
+      });
+      if (ok) toast.show(`Saved ${name}’s photo`);
+    } catch (err) {
+      toast.show((err as Error).message, { tone: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (entrant && confirmRemove) {
+    return (
+      <Dialog open onClose={close} title={`Remove ${name}’s photo?`}>
+        <p className="dialog__text">Guests won’t see their costume any more. You can take a new photo afterwards.</p>
+        <div className="dialog__actions">
+          <button type="button" className="btn btn--quiet" onClick={() => setConfirmRemove(false)}>
+            Keep photo
+          </button>
+          <button
+            type="button"
+            className="btn btn--danger"
+            onClick={() => {
+              setConfirmRemove(false);
+              void run(['entrants'], async (r) => {
+                await r.setCostumePhoto(entrant.id, null);
+                toast.show(`Removed ${name}’s photo`);
+              });
+            }}
+          >
+            Remove photo
+          </button>
+        </div>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog open={entrant !== null} onClose={close} title={name} className="photo-viewer">
+      {entrant?.photoUrl ? (
+        <img className="photo-viewer__img" src={entrant.photoUrl} alt={`${name}’s costume`} />
+      ) : (
+        <p className="dialog__text">
+          No photo yet. Take one while they’re in costume, and guests see it beside their name when they vote.
+        </p>
+      )}
+      <div className="dialog__actions">
+        {entrant?.photoUrl && (
+          <button type="button" className="btn btn--danger-quiet" disabled={busy} onClick={() => setConfirmRemove(true)}>
+            Remove photo
+          </button>
+        )}
+        <button type="button" className="btn btn--quiet" onClick={close}>
+          Done
+        </button>
+        {/* On a phone this offers the camera or the photo library. */}
+        <label className={`btn btn--primary photo-pick ${busy ? 'is-busy' : ''}`}>
+          <input type="file" accept="image/*" className="visually-hidden" disabled={busy} onChange={(e) => void choose(e)} />
+          {busy ? 'Saving…' : entrant?.photoUrl ? 'Replace photo' : 'Add photo'}
+        </label>
+      </div>
+    </Dialog>
   );
 }
 
