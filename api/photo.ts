@@ -1,4 +1,4 @@
-// GET /api/photo?id=...: a Best in Costume photo, readable by anyone. Each upload gets a new id, so it caches for good.
+// GET /api/photo?id=...[&size=thumb]: a Best in Costume photo or its small copy, readable by anyone.
 import { deps } from './_lib/deps.js';
 import { getPhoto } from './_lib/handlers.js';
 

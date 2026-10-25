@@ -5,7 +5,7 @@ import { MAX_NAME_LENGTH, normalizeName } from '../domain/roster';
 import { GENDER_LABEL } from '../domain/teams';
 import type { CostumeEntrant, Gender } from '../domain/types';
 import { shrinkPhoto } from '../lib/photo';
-import { CameraIcon } from './CostumePhoto';
+import { CameraIcon, PhotoViewer } from './CostumePhoto';
 import { ConfirmDialog, Dialog } from './Dialog';
 import { useToast } from './Toast';
 
@@ -155,7 +155,7 @@ function CostumeColumn({
                   onClick={() => onPhoto(entrant)}
                   aria-label={entrant.photoUrl ? `Photo of ${name(entrant)}` : `Add a photo of ${name(entrant)}`}
                 >
-                  {entrant.photoUrl ? <img src={entrant.photoUrl} alt="" loading="lazy" /> : <CameraIcon />}
+                  {entrant.thumbUrl ? <img src={entrant.thumbUrl} alt="" loading="lazy" /> : <CameraIcon />}
                 </button>
                 <span className="costume__who">
                   <span className="costume__name">
@@ -208,11 +208,14 @@ function CostumeColumn({
   );
 }
 
-/** Takes, replaces or removes the photo of someone in the line-up. Follows the live entrant, so a new photo shows at once. */
+/**
+ * Takes, replaces or removes the photo of someone in the line-up. Shows the live photo, so a new one appears at once.
+ * Only one save or removal runs at a time, so a removal can't land after (and delete) a photo taken just after it.
+ */
 function PhotoDialog({ entrantId, onClose }: { entrantId: string | null; onClose: () => void }) {
   const { data, run } = useEventData();
   const toast = useToast();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<'saving' | 'removing' | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const { players, entrants } = data!;
   const entrant = entrants.find((e) => e.id === entrantId) ?? null;
@@ -227,41 +230,46 @@ function PhotoDialog({ entrantId, onClose }: { entrantId: string | null; onClose
     const file = e.target.files?.[0];
     // Cleared so picking the same file again still counts as a change.
     e.target.value = '';
-    if (!file || !entrant) return;
-    setBusy(true);
+    if (!file || !entrant || busy) return;
+    setBusy('saving');
     try {
-      const image = await shrinkPhoto(file);
+      const photo = await shrinkPhoto(file);
       const ok = await run(['entrants'], async (r) => {
-        await r.setCostumePhoto(entrant.id, image);
+        await r.setCostumePhoto(entrant.id, photo);
         return true;
       });
       if (ok) toast.show(`Saved ${name}’s photo`);
     } catch (err) {
       toast.show((err as Error).message, { tone: 'error' });
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
+  }
+
+  async function remove() {
+    if (!entrant || busy) return;
+    setConfirmRemove(false);
+    setBusy('removing');
+    const ok = await run(['entrants'], async (r) => {
+      await r.setCostumePhoto(entrant.id, null);
+      return true;
+    });
+    setBusy(null);
+    if (ok) toast.show(`Removed ${name}’s photo`);
   }
 
   if (entrant && confirmRemove) {
     return (
       <Dialog open onClose={close} title={`Remove ${name}’s photo?`}>
-        <p className="dialog__text">Guests won’t see their costume any more. You can take a new photo afterwards.</p>
+        <p className="dialog__text">
+          Guests stop seeing their costume. Phones that already loaded it can keep showing it for up to an hour. You can
+          take a new photo afterwards.
+        </p>
         <div className="dialog__actions">
           <button type="button" className="btn btn--quiet" onClick={() => setConfirmRemove(false)}>
             Keep photo
           </button>
-          <button
-            type="button"
-            className="btn btn--danger"
-            onClick={() => {
-              setConfirmRemove(false);
-              void run(['entrants'], async (r) => {
-                await r.setCostumePhoto(entrant.id, null);
-                toast.show(`Removed ${name}’s photo`);
-              });
-            }}
-          >
+          <button type="button" className="btn btn--danger" onClick={() => void remove()}>
             Remove photo
           </button>
         </div>
@@ -270,30 +278,34 @@ function PhotoDialog({ entrantId, onClose }: { entrantId: string | null; onClose
   }
 
   return (
-    <Dialog open={entrant !== null} onClose={close} title={name} className="photo-viewer">
-      {entrant?.photoUrl ? (
-        <img className="photo-viewer__img" src={entrant.photoUrl} alt={`${name}’s costume`} />
-      ) : (
-        <p className="dialog__text">
-          No photo yet. Take one while they’re in costume, and guests see it beside their name when they vote.
-        </p>
-      )}
-      <div className="dialog__actions">
-        {entrant?.photoUrl && (
-          <button type="button" className="btn btn--danger-quiet" disabled={busy} onClick={() => setConfirmRemove(true)}>
-            Remove photo
+    <PhotoViewer
+      entrantId={entrantId}
+      onClose={close}
+      empty="No photo yet. Take one while they’re in costume, and guests see it beside their name when they vote."
+      actions={
+        <>
+          {entrant?.photoUrl && (
+            <button type="button" className="btn btn--danger-quiet" disabled={busy !== null} onClick={() => setConfirmRemove(true)}>
+              {busy === 'removing' ? 'Removing…' : 'Remove photo'}
+            </button>
+          )}
+          <button type="button" className="btn btn--quiet" onClick={close}>
+            Done
           </button>
-        )}
-        <button type="button" className="btn btn--quiet" onClick={close}>
-          Done
-        </button>
-        {/* On a phone this offers the camera or the photo library. */}
-        <label className={`btn btn--primary photo-pick ${busy ? 'is-busy' : ''}`}>
-          <input type="file" accept="image/*" className="visually-hidden" disabled={busy} onChange={(e) => void choose(e)} />
-          {busy ? 'Saving…' : entrant?.photoUrl ? 'Replace photo' : 'Add photo'}
-        </label>
-      </div>
-    </Dialog>
+          {/* On a phone this offers the camera or the photo library. */}
+          <label className={`btn btn--primary photo-pick ${busy ? 'is-busy' : ''}`}>
+            <input
+              type="file"
+              accept="image/*"
+              className="visually-hidden"
+              disabled={busy !== null}
+              onChange={(e) => void choose(e)}
+            />
+            {busy === 'saving' ? 'Saving…' : entrant?.photoUrl ? 'Replace photo' : 'Add photo'}
+          </label>
+        </>
+      }
+    />
   );
 }
 

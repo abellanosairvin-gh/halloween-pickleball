@@ -122,14 +122,18 @@ export const postBallot = wrap(async (request, { query }) => {
   return json({ ballot: await ballotStatus(query(), token) });
 });
 
-/** A costume photo. Its id changes with every upload, so browsers and the CDN can keep it for good. */
+/**
+ * A costume photo, or its small copy with size=thumb. Its id changes with every upload, so a cached copy is never
+ * shown in place of a newer photo. Kept for an hour only, so a photo the organizer removes soon stops loading.
+ */
 export const getPhoto = wrap(async (request, { query }) => {
-  const photo = await readPhoto(query(), new URL(request.url).searchParams.get('id'));
+  const params = new URL(request.url).searchParams;
+  const photo = await readPhoto(query(), params.get('id'), params.get('size') === 'thumb');
   if (!photo) return fail(404, 'That photo isn’t there any more.');
   return new Response(photo, {
     headers: {
       'content-type': 'image/jpeg',
-      'cache-control': 'public, max-age=31536000, s-maxage=31536000, immutable',
+      'cache-control': 'public, max-age=3600, s-maxage=3600',
       'x-content-type-options': 'nosniff',
     },
   });

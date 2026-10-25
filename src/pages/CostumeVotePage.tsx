@@ -24,7 +24,7 @@ export function CostumeVotePage() {
   const [picks, setPicks] = useState<Record<Gender, string | null>>({ F: null, M: null });
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [viewing, setViewing] = useState<{ url: string; name: string } | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
 
   const voters = useMemo(() => eligibleVoters(players, entrants), [players, entrants]);
   const voted = new Set(ballots);
@@ -194,32 +194,31 @@ export function CostumeVotePage() {
             ) : (
               <div className="vote-cards">
                 {options.map((e) => (
-                  <label key={e.id} className="vote-card">
-                    <input
-                      type="radio"
-                      name={`vote-${gender}`}
-                      checked={pickFor(gender) === e.id}
-                      onChange={() => setPicks((prev) => ({ ...prev, [gender]: e.id }))}
-                    />
-                    <span className="vote-card__face">
-                      {e.photoUrl && <img className="photo-tile__img" src={e.photoUrl} alt="" loading="lazy" />}
-                      <span className="vote-card__name">{entrantName(e, players)}</span>
-                    </span>
-                    {/* A button inside the label opens the photo without picking them. */}
+                  <div key={e.id} className="vote-card">
+                    <label className="vote-card__pick">
+                      <input
+                        type="radio"
+                        name={`vote-${gender}`}
+                        checked={pickFor(gender) === e.id}
+                        onChange={() => setPicks((prev) => ({ ...prev, [gender]: e.id }))}
+                      />
+                      <span className="vote-card__face">
+                        {e.thumbUrl && <img className="photo-tile__img" src={e.thumbUrl} alt="" loading="lazy" />}
+                        <span className="vote-card__name">{entrantName(e, players)}</span>
+                      </span>
+                    </label>
+                    {/* Beside the label, not in it, so it opens the photo without picking them. */}
                     {e.photoUrl && (
                       <button
                         type="button"
                         className="vote-card__zoom"
                         aria-label={`See ${entrantName(e, players)}’s photo bigger`}
-                        onClick={(ev) => {
-                          ev.preventDefault();
-                          setViewing({ url: e.photoUrl!, name: entrantName(e, players) });
-                        }}
+                        onClick={() => setViewing(e.id)}
                       >
                         <ZoomIcon />
                       </button>
                     )}
-                  </label>
+                  </div>
                 ))}
               </div>
             )}
@@ -236,7 +235,7 @@ export function CostumeVotePage() {
         )}
       </div>
 
-      <PhotoViewer photo={viewing} onClose={() => setViewing(null)} />
+      <PhotoViewer entrantId={viewing} onClose={() => setViewing(null)} />
       <Dialog open={confirming} onClose={() => setConfirming(false)} title="Cast your votes?">
         <ul className="change-list">
           {awards
@@ -273,7 +272,7 @@ function ZoomIcon() {
 function CostumeGallery() {
   const { data } = useEventData();
   const { players, entrants } = data!;
-  const [viewing, setViewing] = useState<CostumeEntrant | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
   if (entrants.length === 0) return null;
   const name = (e: CostumeEntrant) => entrantName(e, players);
 
@@ -292,8 +291,8 @@ function CostumeGallery() {
               {list.map((e) => (
                 <li key={e.id}>
                   {e.photoUrl ? (
-                    <button type="button" className="photo-tile" onClick={() => setViewing(e)}>
-                      <img className="photo-tile__img" src={e.photoUrl} alt="" loading="lazy" />
+                    <button type="button" className="photo-tile" onClick={() => setViewing(e.id)}>
+                      <img className="photo-tile__img" src={e.thumbUrl ?? e.photoUrl} alt="" loading="lazy" />
                       <span className="vote-card__name">{name(e)}</span>
                     </button>
                   ) : (
@@ -307,10 +306,7 @@ function CostumeGallery() {
           </div>
         );
       })}
-      <PhotoViewer
-        photo={viewing?.photoUrl ? { url: viewing.photoUrl, name: name(viewing) } : null}
-        onClose={() => setViewing(null)}
-      />
+      <PhotoViewer entrantId={viewing} onClose={() => setViewing(null)} />
     </section>
   );
 }

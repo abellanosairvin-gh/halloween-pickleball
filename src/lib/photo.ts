@@ -1,6 +1,13 @@
-/** Longest side of a stored costume photo, in pixels: plenty for a phone screen, and quick to load at the party. */
-const MAX_SIDE = 1080;
-const QUALITY = 0.8;
+/** A costume photo ready to upload: base64 JPEGs without the data: prefix. */
+export interface ShrunkPhoto {
+  /** For the full-screen viewer: plenty for a phone screen, and quick to load at the party. */
+  image: string;
+  /** For vote cards, the gallery and the organizer's list, so guests don't load every full-size photo. */
+  thumb: string;
+}
+
+const FULL = { maxSide: 1080, quality: 0.8 };
+const THUMB = { maxSide: 480, quality: 0.72 };
 
 const UNREADABLE = 'That file isn’t a photo this browser can open. Try another one.';
 
@@ -23,10 +30,8 @@ async function decode(file: Blob): Promise<ImageBitmap | HTMLImageElement> {
   }
 }
 
-/** Shrinks a photo from the camera or library to a JPEG, returned as base64 without the data: prefix. */
-export async function shrinkPhoto(file: Blob): Promise<string> {
-  const image = await decode(file);
-  const scale = Math.min(1, MAX_SIDE / Math.max(image.width, image.height));
+function toJpeg(image: ImageBitmap | HTMLImageElement, { maxSide, quality }: typeof FULL): string {
+  const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(image.width * scale));
   canvas.height = Math.max(1, Math.round(image.height * scale));
@@ -36,8 +41,17 @@ export async function shrinkPhoto(file: Blob): Promise<string> {
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-  if ('close' in image) image.close();
-  const url = canvas.toDataURL('image/jpeg', QUALITY);
+  const url = canvas.toDataURL('image/jpeg', quality);
   if (!url.startsWith('data:image/jpeg;base64,')) throw new Error(UNREADABLE);
   return url.slice('data:image/jpeg;base64,'.length);
+}
+
+/** Shrinks a photo from the camera or library to a full-size JPEG and a small one. */
+export async function shrinkPhoto(file: Blob): Promise<ShrunkPhoto> {
+  const image = await decode(file);
+  try {
+    return { image: toJpeg(image, FULL), thumb: toJpeg(image, THUMB) };
+  } finally {
+    if ('close' in image) image.close();
+  }
 }

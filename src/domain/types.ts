@@ -59,6 +59,8 @@ export interface CostumeEntrant {
   guestGender: Gender | null;
   /** A photo of the costume, so it can still be seen after they change. null until the organizer adds one. */
   photoUrl: string | null;
+  /** A small copy of the photo for cards and lists; null exactly when photoUrl is. */
+  thumbUrl: string | null;
 }
 
 /** One vote for one award. A voter is a player id, or the entrant id of a guest who isn't playing. */

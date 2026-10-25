@@ -2707,6 +2707,11 @@ a {
   opacity: 0;
 }
 
+.vote-card__pick {
+  display: block;
+  height: 100%;
+}
+
 .vote-card__face,
 .photo-tile {
   display: grid;

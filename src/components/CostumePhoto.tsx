@@ -1,3 +1,6 @@
+import type { ReactNode } from 'react';
+import { useEventData } from '../data/EventData';
+import { entrantName } from '../domain/costume';
 import { Dialog } from './Dialog';
 
 /** A camera, for "add a photo" where there isn't one yet. */
@@ -9,15 +12,40 @@ export function CameraIcon({ size = 20 }: { size?: number }) {
   );
 }
 
-/** Someone's costume photo, as big as the screen allows. */
-export function PhotoViewer({ photo, onClose }: { photo: { url: string; name: string } | null; onClose: () => void }) {
+/**
+ * Someone's costume photo, as big as the screen allows. Follows the live line-up, so a photo replaced or removed
+ * while it's open updates here, and the dialog closes if they leave the line-up.
+ */
+export function PhotoViewer({
+  entrantId,
+  onClose,
+  empty = 'There’s no photo of their costume any more.',
+  actions,
+}: {
+  entrantId: string | null;
+  onClose: () => void;
+  /** Shown when they have no photo. */
+  empty?: ReactNode;
+  /** Replaces the Close button. */
+  actions?: ReactNode;
+}) {
+  const { data } = useEventData();
+  const entrant = data?.entrants.find((e) => e.id === entrantId) ?? null;
+  const name = entrant && data ? entrantName(entrant, data.players) : '';
+
   return (
-    <Dialog open={photo !== null} onClose={onClose} title={photo?.name ?? ''} className="photo-viewer">
-      {photo && <img className="photo-viewer__img" src={photo.url} alt={`${photo.name}’s costume`} />}
+    <Dialog open={entrant !== null} onClose={onClose} title={name} className="photo-viewer">
+      {entrant?.photoUrl ? (
+        <img className="photo-viewer__img" src={entrant.photoUrl} alt={`${name}’s costume`} />
+      ) : (
+        <p className="dialog__text">{empty}</p>
+      )}
       <div className="dialog__actions">
-        <button type="button" className="btn btn--quiet" onClick={onClose}>
-          Close
-        </button>
+        {actions ?? (
+          <button type="button" className="btn btn--quiet" onClick={onClose}>
+            Close
+          </button>
+        )}
       </div>
     </Dialog>
   );
