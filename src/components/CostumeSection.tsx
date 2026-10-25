@@ -309,13 +309,20 @@ function CostumeForm({ open, onClose }: { open: boolean; onClose: () => void }) 
   const [busy, setBusy] = useState(false);
   const { players, entrants } = data!;
 
+  // Only players who are here: someone not checked in yet isn't at the party to be in costume.
+  const checkedIn = useMemo(() => players.filter((p) => p.checkedInAt !== null), [players]);
   const available = useMemo(() => {
     const entered = new Set(entrants.map((e) => e.playerId));
     const q = query.trim().toLowerCase();
-    return players
+    return checkedIn
       .filter((p) => !entered.has(p.id) && (!q || p.name.toLowerCase().includes(q)))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [players, entrants, query]);
+  }, [checkedIn, entrants, query]);
+  const emptyMessage = query
+    ? 'No checked-in players match.'
+    : checkedIn.length === 0
+      ? 'Nobody is checked in yet. Players show up here once they check in.'
+      : 'Every checked-in player is already in the line-up.';
 
   const close = () => {
     setQuery('');
@@ -369,11 +376,11 @@ function CostumeForm({ open, onClose }: { open: boolean; onClose: () => void }) 
       {mode === 'player' ? (
         <>
           <label className="field">
-            <span className="field__label">Find a player</span>
+            <span className="field__label">Find a checked-in player</span>
             <input className="input" type="search" value={query} autoComplete="off" onChange={(e) => setQuery(e.target.value)} />
           </label>
           {available.length === 0 ? (
-            <p className="dialog__text">{query ? 'No names match.' : 'Every player is already in the line-up.'}</p>
+            <p className="dialog__text">{emptyMessage}</p>
           ) : (
             <ul className="pick-list costume__players">
               {available.map((p) => (
